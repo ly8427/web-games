@@ -2472,5 +2472,97 @@ function frame(now) {
 requestAnimationFrame(frame);
 })();
 </script>
+
+<!-- ===== 触屏虚拟按键（增量层：桌面不显示；内部只派发合成键盘事件，不改动上方游戏代码） ===== -->
+<style>
+  #wrap { position: relative; }   /* 触屏层定位基准（对桌面布局无影响） */
+  #touchUI { display:none; position:absolute; pointer-events:none; z-index:40;
+    font-family:"Microsoft YaHei","PingFang SC",sans-serif; }
+  body.touchOn #touchUI { display:block; }
+  #touchUI .tbtn {
+    position:absolute; pointer-events:auto; touch-action:none;
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+    border-radius:50%; background:rgba(14,18,30,.45); border:2px solid rgba(255,255,255,.42);
+    color:#fff; font-size:17px; font-weight:bold; line-height:1.05;
+    opacity:.9; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+  }
+  #touchUI .tbtn .sub { font-size:10px; font-weight:normal; color:#cdd8f0; }
+  #touchUI .tbtn.on { background:rgba(120,150,230,.55); }
+</style>
+<div id="touchUI">
+  <div class="tbtn" id="tLeft">◀</div>
+  <div class="tbtn" id="tRight">▶</div>
+  <div class="tbtn" id="tJump">跳<span class="sub">/上闪</span></div>
+  <div class="tbtn" id="tAtk">攻<span class="sub">连发</span></div>
+  <div class="tbtn" id="tSkill">技<span class="sub">K</span></div>
+  <div class="tbtn" id="tPause">Ⅱ</div>
+  <div class="tbtn" id="tMute">🔇</div>
+</div>
+<script>
+(function () {
+  var canvas = document.getElementById('game');
+  var ui = document.getElementById('touchUI');
+
+  function key(code, down) {
+    window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code: code, bubbles: true }));
+  }
+  function edgeKey(code) { key(code, true); key(code, false); }
+
+  var enabled = false;
+  function enable() {
+    if (enabled) return;
+    enabled = true;
+    document.body.classList.add('touchOn');
+    sync();
+    window.addEventListener('resize', sync);
+  }
+  function sync() {
+    var s = canvas.offsetWidth / 960;
+    ui.style.left = canvas.offsetLeft + 'px';
+    ui.style.top = canvas.offsetTop + 'px';
+    ui.style.width = canvas.offsetWidth + 'px';
+    ui.style.height = canvas.offsetHeight + 'px';
+    var D = Math.max(46, Math.round(60 * s));   // 大按钮
+    var S = Math.max(34, Math.round(42 * s));   // 小按钮（暂停/静音）
+    var el;
+    el = document.getElementById('tLeft');   place(el, 14 * s, ui.offsetHeight - D - 16 * s, D, 24);
+    el = document.getElementById('tRight');  place(el, 14 * s + D + 12 * s, ui.offsetHeight - D - 16 * s, D, 24);
+    el = document.getElementById('tJump');   place(el, ui.offsetWidth - D - 14 * s, ui.offsetHeight - D - 16 * s, D, 19);
+    el = document.getElementById('tAtk');    place(el, ui.offsetWidth - D - 14 * s, ui.offsetHeight - 2 * D - 26 * s, D, 19);
+    el = document.getElementById('tSkill');  place(el, ui.offsetWidth - 2 * D - 26 * s, ui.offsetHeight - D - 16 * s, D, 19);
+    el = document.getElementById('tPause');  place(el, ui.offsetWidth - S - 12 * s, 12 * s, S, 15);
+    el = document.getElementById('tMute');   place(el, ui.offsetWidth - 2 * S - 22 * s, 12 * s, S, 15);
+  }
+  function place(el, x, y, d) {
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    el.style.width = el.style.height = d + 'px';
+    el.style.fontSize = Math.round(d / 3.4) + 'px';
+  }
+
+  // 按住型：touchstart 按下键，touchend/cancel 抬起（游戏端 keydown 只取按下沿，长按安全）
+  function bindHold(el, code) {
+    el.addEventListener('touchstart', function (e) { e.preventDefault(); e.stopPropagation(); el.classList.add('on'); key(code, true); }, { passive: false });
+    var up = function () { el.classList.remove('on'); key(code, false); };
+    el.addEventListener('touchend', function (e) { e.preventDefault(); up(); }, { passive: false });
+    el.addEventListener('touchcancel', up);
+  }
+  // 单发型：按下立即触发并抬起
+  function bindTap(el, code) {
+    el.addEventListener('touchstart', function (e) { e.preventDefault(); e.stopPropagation(); el.classList.add('on'); edgeKey(code); }, { passive: false });
+    el.addEventListener('touchend', function (e) { e.preventDefault(); el.classList.remove('on'); }, { passive: false });
+    el.addEventListener('touchcancel', function () { el.classList.remove('on'); });
+  }
+  bindHold(document.getElementById('tLeft'), 'KeyA');
+  bindHold(document.getElementById('tRight'), 'KeyD');
+  bindHold(document.getElementById('tJump'), 'KeyW');    // 按住=按住 W：跳跃，且小猫宝按住时按技=向上瞬移
+  bindHold(document.getElementById('tAtk'), 'KeyJ');
+  bindTap(document.getElementById('tSkill'), 'KeyK');
+  bindTap(document.getElementById('tPause'), 'Escape');
+  bindTap(document.getElementById('tMute'), 'KeyM');
+
+  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) enable();
+  document.addEventListener('touchstart', function () { enable(); }, { once: true, capture: true, passive: true });
+})();
+</script>
 </body>
 </html>
