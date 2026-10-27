@@ -1,0 +1,7 @@
+# 调试产物与临时文件
+.dbg/
+*.log
+*.lock
+.DS_Store
+Thumbs.db
+node_modules/
