@@ -1124,5 +1124,142 @@
   drawPlayer();
 })();
 </script>
+
+<!-- ===== 触屏虚拟按键（增量层：桌面不显示；内部只派发合成键鼠事件，不改动上方游戏代码） ===== -->
+<style>
+  #touchUI { display:none; position:absolute; pointer-events:none; z-index:40; }
+  body.touchOn #touchUI { display:block; }
+  #touchUI .tbtn {
+    position:absolute; pointer-events:auto; touch-action:none;
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+    border-radius:50%; background:rgba(16,22,14,.45); border:2px solid rgba(255,255,255,.4);
+    color:#fff; font-size:16px; font-weight:bold; line-height:1.05; text-align:center;
+    opacity:.92; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+  }
+  #touchUI .tbtn .sub { font-size:10px; font-weight:normal; color:#cfe8cf; }
+  #touchUI .tbtn.on { background:rgba(110,190,110,.55); }
+  #joyBase { position:absolute; pointer-events:auto; touch-action:none; border-radius:50%;
+    background:rgba(16,22,14,.32); border:2px solid rgba(255,255,255,.3);
+    user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  #joyKnob { position:absolute; border-radius:50%; background:rgba(255,255,255,.5); }
+</style>
+<div id="touchUI">
+  <div id="joyBase"><div id="joyKnob"></div></div>
+  <div class="tbtn" id="tShield">盾<span class="sub">挡弹</span></div>
+  <div class="tbtn" id="tSpike">刺<span class="sub">全场</span></div>
+  <div class="tbtn" id="tInv">隐<span class="sub">4秒</span></div>
+</div>
+<script>
+(function () {
+  var canvas = document.getElementById('game');
+  var ui = document.getElementById('touchUI');
+  var base = document.getElementById('joyBase');
+  var knob = document.getElementById('joyKnob');
+
+  function key(code, down) {
+    window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code: code, bubbles: true }));
+  }
+  function edgeKey(code) { key(code, true); key(code, false); }   // 单发键：按下立即抬起
+
+  var enabled = false;
+  function enable() {
+    if (enabled) return;
+    enabled = true;
+    document.body.classList.add('touchOn');
+    canvas.style.touchAction = 'none';   // 防游玩时页面滚动/缩放（仅影响触摸行为）
+    sync();
+    window.addEventListener('resize', sync);
+  }
+  // 触屏层与画布对齐（画布居中于 #wrap，按画布实际占位覆盖，不改变布局）
+  function sync() {
+    var s = canvas.offsetWidth / 960;
+    ui.style.left = canvas.offsetLeft + 'px';
+    ui.style.top = canvas.offsetTop + 'px';
+    ui.style.width = canvas.offsetWidth + 'px';
+    ui.style.height = canvas.offsetHeight + 'px';
+    var D = Math.max(46, Math.round(58 * s));       // 技能键直径
+    place(document.getElementById('tShield'), ui.offsetWidth - D - 12 * s, ui.offsetHeight - D - 12 * s, D);
+    place(document.getElementById('tSpike'), ui.offsetWidth - D - 12 * s, ui.offsetHeight - 2 * D - 24 * s, D);
+    place(document.getElementById('tInv'), ui.offsetWidth - D - 12 * s, ui.offsetHeight - 3 * D - 36 * s, D);
+    var J = Math.max(96, Math.round(122 * s));      // 摇杆底盘直径
+    base.style.width = base.style.height = J + 'px';
+    base.style.left = (14 * s) + 'px';
+    base.style.top = (ui.offsetHeight - J - 14 * s) + 'px';
+    var K = Math.max(38, Math.round(48 * s));
+    knob.style.width = knob.style.height = K + 'px';
+    knob.style.left = knob.style.top = ((J - K) / 2) + 'px';
+  }
+  function place(el, x, y, d) { el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.width = el.style.height = d + 'px'; el.style.fontSize = Math.round(d / 3.6) + 'px'; }
+
+  // ---- 技能按钮：隐(1)/刺(2)/盾(右键) ----
+  function bindTap(el, fn) {
+    el.addEventListener('touchstart', function (e) { e.preventDefault(); e.stopPropagation(); el.classList.add('on'); fn(); }, { passive: false });
+    el.addEventListener('touchend', function (e) { e.preventDefault(); el.classList.remove('on'); }, { passive: false });
+    el.addEventListener('touchcancel', function () { el.classList.remove('on'); });
+  }
+  bindTap(document.getElementById('tInv'), function () { edgeKey('Digit1'); });
+  bindTap(document.getElementById('tSpike'), function () { edgeKey('Digit2'); });
+  bindTap(document.getElementById('tShield'), function () {
+    // 护盾走游戏原生的画布右键路径（mousedown button=2 → tryPlaceShield）
+    canvas.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true }));
+  });
+
+  // ---- 虚拟摇杆：WASD / 方向键 ----
+  var joyId = null, dirs = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
+  function setDirs(u, l, d, r) {
+    var want = { KeyW: u, KeyA: l, KeyS: d, KeyD: r };
+    for (var k in want) {
+      if (want[k] !== dirs[k]) { dirs[k] = want[k]; key(k, want[k]); }
+    }
+  }
+  function releaseJoy() { joyId = null; setDirs(false, false, false, false); knob.style.transform = 'translate(0px,0px)'; }
+  base.addEventListener('touchstart', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    if (joyId !== null) return;
+    joyId = e.changedTouches[0].identifier;
+  }, { passive: false });
+  base.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      var t = e.changedTouches[i];
+      if (t.identifier !== joyId) continue;
+      var br = base.getBoundingClientRect();
+      var cx = br.left + br.width / 2, cy = br.top + br.height / 2;
+      var dx = t.clientX - cx, dy = t.clientY - cy;
+      var lim = br.width / 2 - knob.offsetWidth / 2;
+      var len = Math.hypot(dx, dy) || 1, cl = Math.min(len, lim);
+      knob.style.transform = 'translate(' + (dx / len * cl) + 'px,' + (dy / len * cl) + 'px)';
+      var dz = br.width * 0.28;   // 死区
+      setDirs(dy < -dz, dx < -dz, dy > dz, dx > dz);
+    }
+  }, { passive: false });
+  base.addEventListener('touchend', releaseJoy);
+  base.addEventListener('touchcancel', releaseJoy);
+
+  // ---- 画布触摸 = 瞄准 + 持续射击（与鼠标同源：mousemove/mousedown/mouseup）----
+  function toCanvasPoint(t) {
+    return { clientX: t.clientX, clientY: t.clientY };
+  }
+  canvas.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    var p = toCanvasPoint(e.changedTouches[0]);
+    canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: p.clientX, clientY: p.clientY, bubbles: true }));
+    canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: p.clientX, clientY: p.clientY, bubbles: true }));
+  }, { passive: false });
+  canvas.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    var p = toCanvasPoint(e.changedTouches[0]);
+    canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: p.clientX, clientY: p.clientY, bubbles: true }));
+  }, { passive: false });
+  canvas.addEventListener('touchend', function (e) {
+    e.preventDefault();
+    window.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true }));
+  }, { passive: false });
+
+  // ---- 启用条件：支持触摸的设备，或第一次真实触摸 ----
+  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) enable();
+  document.addEventListener('touchstart', function () { enable(); }, { once: true, capture: true, passive: true });
+})();
+</script>
 </body>
 </html>
