@@ -1,5 +1,13 @@
 # 🎮 小游戏合集
 
+> 这个仓库里的小游戏，都来自家里小朋友的许愿：“想要一个这样的游戏！”
+> 大人负责把愿望写成代码，小朋友负责出主意和试玩。
+> 放在这里，是为了把这些一起做游戏的时光好好保存。如果恰好也被别的小朋友喜欢，那就赚到了 🙂
+>
+> The little games in this repo all started as wishes from the kid at home: "I want a game like this!"
+> The grown-up turned those wishes into code; the kid came up with the ideas and play-tested every one.
+> They live here so we can keep these game-making days together. And if some other kid happens to love them too — bonus! 🙂
+
 纯网页小游戏合集。所有游戏**零外部依赖**（无 CDN、无构建工具、无外部图片/音频），下载后断网双击即玩。
 
 ## 怎么玩
