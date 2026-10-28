@@ -2479,6 +2479,9 @@ requestAnimationFrame(frame);
   #touchUI { display:none; position:absolute; pointer-events:none; z-index:40;
     font-family:"Microsoft YaHei","PingFang SC",sans-serif; }
   body.touchOn #touchUI { display:block; }
+  /* 禁用 iOS Safari 双击缩放：快速连点会触发页面放大导致画面错乱 */
+  body.touchOn { touch-action: manipulation; }
+  body.touchOn canvas { touch-action: none; }
   #touchUI .tbtn {
     position:absolute; pointer-events:auto; touch-action:none;
     display:flex; align-items:center; justify-content:center; flex-direction:column;

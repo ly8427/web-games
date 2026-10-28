@@ -1129,6 +1129,9 @@
 <style>
   #touchUI { display:none; position:absolute; pointer-events:none; z-index:40; }
   body.touchOn #touchUI { display:block; }
+  /* 禁用 iOS Safari 双击缩放：快速连点会触发页面放大导致画面错乱 */
+  body.touchOn { touch-action: manipulation; }
+  body.touchOn canvas { touch-action: none; }
   /* 触屏模式：画布等比缩进视口（画布默认按固有 960×640 CSS 像素渲染，手机屏放不下，
      溢出被裁掉时锚定画布边角的摇杆/按钮会落到屏幕外）；桌面无 touchOn 类，不受影响 */
   body.touchOn canvas {
