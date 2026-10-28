@@ -20,6 +20,10 @@
      竖屏时游戏画面（16:9）天然只是一条横带——此处去掉页面留白让画面铺满屏宽，
      并显示「建议横屏」提示条；桌面无 touchOn 类，不受影响 */
   body.touchOn { padding: 6px 4px; }
+  /* 禁用 iOS Safari 双击缩放（快速连点会触发页面放大导致画面错乱）；
+     菜单浮层保留上下滚动手感 */
+  body.touchOn { touch-action: manipulation; }
+  body.touchOn #cg-overlay { touch-action: pan-y; }
   @media (orientation: portrait) {
     body.touchOn { padding: 0; padding-top: 9vh; align-items: flex-start; }
     body.touchOn #castle-game { max-width: none; }
