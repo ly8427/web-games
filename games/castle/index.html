@@ -21,9 +21,31 @@
      并显示「建议横屏」提示条；桌面无 touchOn 类，不受影响 */
   body.touchOn { padding: 6px 4px; }
   @media (orientation: portrait) {
-    body.touchOn { padding: 0; align-items: flex-start; }
+    body.touchOn { padding: 0; padding-top: 9vh; align-items: flex-start; }
     body.touchOn #castle-game { max-width: none; }
     body.touchOn #castle-game .cg-wrap { max-width: none; border-radius: 0; }
+    /* 核心修复：竖屏窄幕下菜单列实际高达 ~2200px，原先被困在画布高度的
+       小窗口里滚动（几乎不可用）。改为菜单浮层占满整个视口、独立滚动 */
+    body.touchOn #cg-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 18px 14px 44px;
+      align-items: flex-start;
+      background: rgba(7, 8, 16, .92);
+    }
+    body.touchOn #cg-overlay .cg-inner { max-width: 470px; }
+    /* 菜单列在窄屏高达 ~2200px，开始按钮垫底；竖屏下让它悬浮在屏幕底部常驻 */
+    body.touchOn #cg-overlay #cg-start {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 14px;
+      z-index: 21;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, .5);
+    }
   }
   #rotateHint {
     display: none;
