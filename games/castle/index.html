@@ -16,6 +16,55 @@
     box-sizing: border-box;
   }
   #castle-game { width: 100%; max-width: 980px; }
+  /* 触屏设备：body 加 touchOn 类（由文件尾脚本设置）。
+     竖屏时游戏画面（16:9）天然只是一条横带——此处去掉页面留白让画面铺满屏宽，
+     并显示「建议横屏」提示条；桌面无 touchOn 类，不受影响 */
+  body.touchOn { padding: 6px 4px; }
+  @media (orientation: portrait) {
+    body.touchOn { padding: 0; padding-top: 9vh; align-items: flex-start; }
+    body.touchOn #castle-game { max-width: none; }
+    body.touchOn #castle-game .cg-wrap { max-width: none; border-radius: 0; }
+    /* 核心修复：竖屏窄幕下菜单列实际高达 ~2200px，原先被困在画布高度的
+       小窗口里滚动（几乎不可用）。改为菜单浮层占满整个视口、独立滚动 */
+    body.touchOn #cg-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 18px 14px 44px;
+      align-items: flex-start;
+      background: rgba(7, 8, 16, .92);
+    }
+    body.touchOn #cg-overlay .cg-inner { max-width: 470px; }
+    /* 菜单列在窄屏高达 ~2200px，开始按钮垫底；竖屏下让它悬浮在屏幕底部常驻 */
+    body.touchOn #cg-overlay #cg-start {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 14px;
+      z-index: 21;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, .5);
+    }
+  }
+  #rotateHint {
+    display: none;
+    position: fixed;
+    left: 50%; transform: translateX(-50%);
+    bottom: 14px;
+    z-index: 50;
+    background: rgba(20, 24, 38, .92);
+    color: #ffd97a;
+    border: 1px solid rgba(255, 217, 122, .45);
+    border-radius: 22px;
+    padding: 9px 18px;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  @media (orientation: portrait) {
+    body.touchOn #rotateHint { display: block; }
+  }
   #castle-game .btn {
     font-family: inherit;
     font-size: 16px;
@@ -1726,5 +1775,16 @@ root.__cgDebug={startRun:startRun,startLevel:startLevel,fireBow:fireBow,throwBom
 })();
 </script>
 </div>
+<!-- 外壳补充：触屏检测 + 竖屏横屏建议提示（不改动上方游戏本体） -->
+<div id="rotateHint">↻ 建议横屏握持，画面大一倍多 · 点击关闭</div>
+<script>
+(function () {
+  function enable() { document.body.classList.add('touchOn'); }
+  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) enable();
+  document.addEventListener('touchstart', enable, { once: true, capture: true, passive: true });
+  var hint = document.getElementById('rotateHint');
+  hint.addEventListener('click', function () { hint.style.display = 'none'; });
+})();
+</script>
 </body>
 </html>
