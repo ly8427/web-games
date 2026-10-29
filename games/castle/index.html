@@ -50,19 +50,22 @@
       z-index: 21;
       box-shadow: 0 4px 18px rgba(0, 0, 0, .5);
     }
+    /* 竖屏画布只是顶部窄条，按键原贴画布底边够不着拇指；
+       把触控层铺满全屏，按键自然落到屏幕底部两角 */
+    body.touchOn #cg-touch { position: fixed; inset: 0; z-index: 25; }
   }
   #rotateHint {
     display: none;
     position: fixed;
     left: 50%; transform: translateX(-50%);
-    bottom: 14px;
+    top: 10px;
     z-index: 50;
     background: rgba(20, 24, 38, .92);
     color: #ffd97a;
     border: 1px solid rgba(255, 217, 122, .45);
     border-radius: 22px;
-    padding: 9px 18px;
-    font-size: 14px;
+    padding: 8px 16px;
+    font-size: 13px;
     cursor: pointer;
     white-space: nowrap;
   }
@@ -1767,9 +1770,22 @@ window.addEventListener("mouseup",function(){mouse.held=false;attackEnd();});
 window.addEventListener("blur",function(){for(const k in keys)keys[k]=false;mouse.held=false;});
 touchEl.querySelectorAll(".cg-tbtn").forEach(function(btn){
   const code=btn.getAttribute("data-code"),action=btn.getAttribute("data-action");
-  const down=function(e){e.preventDefault();ensureAudio();if(code)keys[code]=true;if(action==="attack"){mouse.held=true;attackStart("touch");}if(action==="bomb")throwBomb();if(action==="chest"){const c=nearChest();if(c)openChest(c);}if(action==="pet")togglePet();};
-  const up=function(e){e.preventDefault();if(code)keys[code]=false;if(action==="attack"){mouse.held=false;attackEnd();}};
+  /* iOS Safari 下 pointer 事件在部分场景不送达，补 touch 通道；
+     同一次按压两族事件都会来，down 路径（扔炸弹等非幂等动作）按族去重 */
+  let viaPointer=false;
+  const down=function(e){e.preventDefault();ensureAudio();
+    if(e.type==="pointerdown")viaPointer=true;
+    else if(viaPointer)return;
+    if(code)keys[code]=true;
+    if(action==="attack"){mouse.held=true;attackStart("touch");}
+    if(action==="bomb")throwBomb();
+    if(action==="chest"){const c=nearChest();if(c)openChest(c);}
+    if(action==="pet")togglePet();};
+  const up=function(e){if(e.cancelable)e.preventDefault();
+    if(e.type==="pointerup"||e.type==="pointercancel"||e.type==="pointerleave")viaPointer=false;
+    if(code)keys[code]=false;if(action==="attack"){mouse.held=false;attackEnd();}};
   btn.addEventListener("pointerdown",down);btn.addEventListener("pointerup",up);btn.addEventListener("pointercancel",up);btn.addEventListener("pointerleave",up);
+  btn.addEventListener("touchstart",down,{passive:false});btn.addEventListener("touchend",up,{passive:false});btn.addEventListener("touchcancel",up,{passive:false});
 });
 if("ontouchstart" in window||navigator.maxTouchPoints>0)touchEl.classList.add("show");
 
@@ -1788,6 +1804,13 @@ root.__cgDebug={startRun:startRun,startLevel:startLevel,fireBow:fireBow,throwBom
   document.addEventListener('touchstart', enable, { once: true, capture: true, passive: true });
   var hint = document.getElementById('rotateHint');
   hint.addEventListener('click', function () { hint.style.display = 'none'; });
+  /* 兜底拦截双击缩放：320ms 内的第二次 touchend 阻止默认（Safari 双击放大） */
+  var lastTap = 0;
+  document.addEventListener('touchend', function (e) {
+    var now = Date.now();
+    if (now - lastTap < 320 && e.touches.length === 0) e.preventDefault();
+    lastTap = now;
+  }, { passive: false });
 })();
 </script>
 </body>
