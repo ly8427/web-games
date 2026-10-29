@@ -663,7 +663,7 @@ const BOSS_TINTS = {
 function LB(name, tip, pal) {
   const L = { name, tip, pal, w: 0, spawn: 70,
     ground: [], plats: [], walls: [], spikes: [], flames: [], crushers: [], seals: [],
-    enemies: [], pickups: [], signs: [], exit: null,
+    enemies: [], pickups: [], signs: [], npcs: [], exit: null,
     boss: false, bossSpawn: null, bossName: '时空间吞噬者', bossTint: BOSS_TINTS.chrono, bossHp: 1, bossRate: 1 };
   let x = 0;
   const api = {
@@ -687,6 +687,10 @@ function LB(name, tip, pal) {
       return api;
     },
     plats(list) { for (const p of list) L.plats.push([p[0], p[1], p[2]]); return api; },
+    npcAt(id, x, lines) { // 友好彩蛋 NPC（绝对坐标；只站路边说话，不参与战斗）
+      L.npcs.push({ id, x, lines: lines || null });
+      return api;
+    },
     sealGate() { // 高低双层封印墙，中空窗通过（同原第四关安全型）
       L.seals.push([x, 0, 26, 206], [x, 392, 26, 78]);
       x += 26;
@@ -717,7 +721,7 @@ function ARENA(name, tip, pal, o) {
       { type: 'heart', x: 300, y: 440 }, { type: 'heart', x: 1360, y: 440 },
       { type: 'crystal', x: 720, y: 440 }, { type: 'crystal', x: 940, y: 440 },
     ],
-    signs: [], exit: null, boss: true, bossSpawn: [1180, 240],
+    signs: [], npcs: o.npcs || [], exit: null, boss: true, bossSpawn: [1180, 240],
     bossName: o.bossName || '时空间吞噬者', bossTint: o.tint || BOSS_TINTS.chrono,
     bossHp: o.hp || 1, bossRate: o.rate || 1,
   };
@@ -732,6 +736,7 @@ const ORIG_L1 = {
   enemies: [SL(390), SL(1180), SL(1985), SL(2620)],
   pickups: [HE(1100, 358), CR(1975, 356), HE(2765, 354)],
   signs: [[130, 'A/D 或方向键移动 · 空格/W 跳跃'], [470, 'J 或鼠标左键挥剑'], [950, '红心回血 · 蓝晶回充能'], [2350, '小心坑洞，掉落即倒下']],
+  npcs: [{ id: 'potion', x: 250 }], // 彩蛋：头头来平原度假
   exit: 3280, boss: false, bossName: '', bossTint: null, bossHp: 1, bossRate: 1,
 };
 const ORIG_L2 = {
@@ -758,7 +763,7 @@ const ORIG_L3 = {
   enemies: [BA(630, 400), BA(1050, 330), BA(1230, 270), BA(1900, 390), BA(2450, 300), BA(2900, 330), BA(3060, 260),
             SL(1620), SL(3400), SL(3600)],
   pickups: [CR(1050, 282), CR(2110, 262), CR(3040, 222), HE(1195, 300), HE(3450, 436)],
-  signs: [], exit: 3700, boss: false, bossName: '', bossTint: null, bossHp: 1, bossRate: 1,
+  signs: [], npcs: [{ id: 'knight', x: 300 }], exit: 3700, boss: false, bossName: '', bossTint: null, bossHp: 1, bossRate: 1,
 };
 const ORIG_L4 = {
   name: '4-1 · 封印回廊', tip: '紫黑封印墙完全阻挡跃迁 · 只能硬闯机关门', pal: 3,
@@ -783,7 +788,12 @@ const ORIG_L5 = { // 最终 BOSS 战（原版场地）
   spikes: [], flames: [], crushers: [], seals: [],
   enemies: [],
   pickups: [HE(300, 358), HE(1300, 358), CR(720, 358), CR(880, 358)],
-  signs: [], exit: null, boss: true, bossSpawn: [1150, 240],
+  signs: [],
+  npcs: [ // 彩蛋：决战前两人来打气
+    { id: 'potion', x: 380, lines: ['吞噬者很凶！躲开它的激光——时空小队加油！'] },
+    { id: 'knight', x: 430, lines: ['把它当成大号法老打！我们都在给你打气！'] },
+  ],
+  exit: null, boss: true, bossSpawn: [1150, 240],
   bossName: '时空间吞噬者', bossTint: BOSS_TINTS.chrono, bossHp: 1.1, bossRate: 1.15,
 };
 /* ---- 世界一：星语平原（基础：史莱姆/蝙蝠/史莱姆王） ---- */
@@ -963,6 +973,7 @@ const W4_5 = LB('4-5 · 封印深渊', '世界四最终试炼：封印门后藏�
 /* ---- 世界五：毒雾沼泽（毒蘑菇/食人花/毒菇王/花后） ---- */
 const W5_1 = LB('5-1 · 毒雾林间', '毒蘑菇会喷出毒孢子——离远点或跳过孢子', 5)
   .flat(560, { sg: [[150, '毒孢子落地即散——看好弧线再起跳！']], en: [['shroom', 380]] })
+  .npcAt('potion', 220, ['毒雾好呛！真想把我的药水搬一箱过来…', '毒蘑菇会喷孢子，学我打僵尸那样绕着打！', '食人花射程很远，边跳边靠近它！'])
   .gap(130)
   .flat(560, { en: [['shroom', 220], ['slime', 420]], pk: [['heart', 140, 440]] })
   .gap(140, [[48, 400, 86]])
@@ -1144,6 +1155,7 @@ let hero = null;                 // 当前英雄定义
 let P = null;                    // 玩家实例
 let solids = [], seals = [], spikes = [], flames = [], crushers = [];
 let enemies = [], projectiles = [], beams = [], pickups = [], signs = [], portal = null, boss = null;
+let npcs = [];                    // 友好彩蛋 NPC（头头/古堡小骑士——不参与战斗，只聊天）
 let particles = [], floats = [];
 let uiButtons = [];              // 每帧菜单按钮注册表
 let DIFF = DIFFS.normal;         // 当前难度参数
@@ -1242,6 +1254,7 @@ function buildLevel(i) {
   G.level = i; G.levelTime = 0; G.slowT = 0; G.slowRingT = 0;
   solids = []; seals = []; spikes = []; flames = []; crushers = [];
   enemies = []; projectiles = []; beams = []; pickups = []; signs = (L.signs || []).slice();
+  npcs = (L.npcs || []).map((d, i) => ({ id: d.id, x: d.x, y: GROUND_Y, dir: 1, ph: Math.random() * 9, talkT: 0, line: 0, lineT: 0, loveT: 0, lift: i * 32, lines: d.lines || null }));
   particles = []; floats = [];
   for (const g of L.ground) solids.push({ x: g[0], y: GROUND_Y, w: g[1] - g[0], h: H - GROUND_Y + 60, type: 'ground' });
   for (const p of L.plats)  solids.push({ x: p[0], y: p[1], w: p[2], h: 24, type: 'plat' });
@@ -1675,6 +1688,170 @@ function updateEnemies(dt) {
   }
 }
 
+/* ==================== 友好彩蛋 NPC（头头 / 古堡小骑士） ====================
+ * 客串自《头头药水大作战》与《废弃城堡大冒险》：只站在路边聊天、挥手、冒爱心。
+ * 不进 enemies 数组 → 玩家攻击/技能/敌人 AI 全都不会碰到它们；不挡路、无碰撞伤害。 */
+const NPC_DEFS = {
+  potion: {
+    name: '头头',
+    labelY: 54,
+    lines: ['你好呀！我是头头，从「药水大作战」来度假～', '守完五波僵尸，这里可安静多啦！', '小心前面的坑，掉下去我可不捞你哟～'],
+  },
+  knight: {
+    name: '古堡小骑士',
+    labelY: 74,
+    lines: ['我是废弃古堡的小骑士，王冠早就夺回来啦！', '头顶盘旋的鹰是我的伙伴，它也在帮你望风。', '断崖不算什么，比古堡的尖刺走廊好跳多了！'],
+  },
+};
+function npcLines(n) { return n.lines && n.lines.length ? n.lines : NPC_DEFS[n.id].lines; }
+function updateNPCs(dt) {
+  for (const n of npcs) {
+    n.ph += dt; // 友好生物不受时滞领域影响（氛围角色保持活泼）
+    const pcx = P.x + P.w / 2;
+    const near = Math.abs(pcx - n.x) < 130 && Math.abs((P.y + P.h) - n.y) < 170;
+    if (near) {
+      n.dir = pcx > n.x ? 1 : -1;
+      n.talkT = Math.min(1, n.talkT + dt * 3);
+      n.lineT += dt;
+      if (n.lineT > 3.2) { n.lineT = 0; n.line = (n.line + 1) % npcLines(n).length; }
+      n.loveT += dt;
+      if (n.loveT > 1.7) {
+        n.loveT = 0;
+        particles.push({ x: n.x + (Math.random() - 0.5) * 22, y: n.y - 62, vx: (Math.random() - 0.5) * 24, vy: -42, life: 0.8, max: 0.8, size: 3, color: '#ff9ab8', grav: -18 });
+      }
+    } else if (n.talkT > 0) {
+      n.talkT = Math.max(0, n.talkT - dt * 2);
+    }
+  }
+}
+function drawNPCBubble(n) {
+  if (n.talkT <= 0) return;
+  const def = NPC_DEFS[n.id];
+  const line = npcLines(n)[n.line];
+  ctx.save();
+  ctx.globalAlpha = n.talkT;
+  ctx.font = '12px "Microsoft YaHei","PingFang SC",sans-serif';
+  const tw = ctx.measureText(line).width;
+  const bw = tw + 18, bx = clamp(n.x - bw / 2, 6, W - bw - 6), by = GROUND_Y - def.labelY - 40 - (n.lift || 0);
+  ctx.fillStyle = 'rgba(255,255,255,0.94)';
+  rr(bx, by, bw, 24, 7); ctx.fill();
+  ctx.strokeStyle = 'rgba(90,110,160,0.5)'; ctx.lineWidth = 1.2;
+  rr(bx, by, bw, 24, 7); ctx.stroke();
+  ctx.beginPath(); // 尾巴
+  ctx.moveTo(n.x - 5, by + 23); ctx.lineTo(n.x + 6, by + 23); ctx.lineTo(n.x, by + 31);
+  ctx.closePath(); ctx.fillStyle = 'rgba(255,255,255,0.94)'; ctx.fill();
+  txt(line, bx + 9, by + 12.5, 12, '#2a3450', 'left');
+  ctx.restore();
+}
+function drawNPC(n) {
+  const def = NPC_DEFS[n.id];
+  const t = n.ph;
+  ctx.save();
+  // 阴影
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(n.x, GROUND_Y + 2, 14, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.translate(n.x, GROUND_Y);
+  ctx.scale(n.dir, 1);
+  const waving = n.talkT > 0.15;
+  if (n.id === 'potion') { // 头头：大方块脑袋小人 + 抱一瓶药水（还原《头头药水大作战》）
+    const bob = Math.sin(t * 2) * 1.2;
+    // 小短腿
+    const leg = Math.sin(t * 2.6) * 1.2;
+    ctx.fillStyle = '#a06a3a';
+    ctx.fillRect(-7, -9 + leg * 0.4, 5, 9 - leg * 0.4);
+    ctx.fillRect(2, -9 - leg * 0.4, 5, 9 + leg * 0.4);
+    // 方块头（麦色 + 高光/底影 + 棕发 + 蓝瞳 + 胡子 + 黑描边）
+    ctx.save();
+    ctx.translate(0, bob);
+    ctx.fillStyle = '#c98a5a'; ctx.fillRect(-13, -36, 26, 27);
+    ctx.fillStyle = '#e0a878'; ctx.fillRect(-13, -36, 26, 4);
+    ctx.fillStyle = '#a06a3a'; ctx.fillRect(-13, -13, 26, 4);
+    ctx.fillStyle = '#3a2a1a';
+    ctx.fillRect(-13, -36, 26, 6); ctx.fillRect(-13, -30, 4, 4); ctx.fillRect(9, -30, 4, 4);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(-8, -27, 5.4, 4.4); ctx.fillRect(2.6, -27, 5.4, 4.4);
+    ctx.fillStyle = '#2a5a8a';
+    ctx.fillRect(-6.6, -26, 2.6, 2.8); ctx.fillRect(4.4, -26, 2.6, 2.8);
+    ctx.fillStyle = '#6a3a1a'; ctx.fillRect(-5, -19.6, 10, 2.2);
+    ctx.fillStyle = '#5a3a1a'; ctx.fillRect(-7, -17, 14, 2.4);
+    ctx.strokeStyle = '#100c08'; ctx.lineWidth = 1.8;
+    ctx.strokeRect(-13, -36, 26, 27);
+    ctx.restore();
+    // 后手抱药水（绿色瓶 + 软木塞）
+    ctx.save();
+    ctx.translate(-11, -18);
+    ctx.rotate(0.2);
+    ctx.fillStyle = '#6ad06a'; rr(-4, -8, 9, 12, 2.4); ctx.fill();
+    ctx.fillStyle = '#a8f0a0'; ctx.fillRect(-2.6, -6.4, 2.2, 5);
+    ctx.fillStyle = '#b08a52'; ctx.fillRect(-1.6, -11, 5, 3.2);
+    ctx.restore();
+    // 前手：靠近时挥手
+    ctx.save();
+    ctx.translate(12, -24);
+    ctx.rotate(waving ? -0.6 + Math.sin(t * 9) * 0.5 : 0.15);
+    ctx.fillStyle = '#c98a5a'; ctx.fillRect(-2.2, 0, 4.4, 10);
+    ctx.restore();
+  } else { // 古堡小骑士：银蓝盔甲 + 红缨盔 + 金剑 + 宠物鹰（还原《废弃城堡大冒险》）
+    const bob = Math.sin(t * 2) * 1.1;
+    ctx.translate(0, bob * 0.4);
+    // 腿
+    const leg = Math.sin(t * 2.4) * 1.2;
+    ctx.fillStyle = '#3d4557';
+    ctx.fillRect(-7, -14 + leg * 0.3, 5.4, 14 - leg * 0.3);
+    ctx.fillRect(1.6, -14 - leg * 0.3, 5.4, 14 + leg * 0.3);
+    // 身甲
+    ctx.fillStyle = '#5a6478'; ctx.fillRect(-9, -40 + bob, 18, 27);
+    ctx.fillStyle = '#414a5c'; ctx.fillRect(-9, -22 + bob, 18, 4.6);
+    ctx.fillStyle = '#7e8ba0'; ctx.fillRect(-10, -40 + bob, 20, 4);
+    // 头 + 盔 + 红缨
+    ctx.fillStyle = '#e2b98f';
+    ctx.beginPath(); ctx.arc(0, -46 + bob, 7.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8a94a8';
+    ctx.beginPath(); ctx.arc(0, -52 + bob, 8.2, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e2574c'; ctx.fillRect(-1, -62 + bob, 2, 8.6);
+    ctx.fillStyle = '#22262f';
+    ctx.fillRect(-4.2, -48 + bob, 2.2, 2.2); ctx.fillRect(2, -48 + bob, 2.2, 2.2);
+    // 前臂 + 金剑（斜持）
+    ctx.save();
+    ctx.translate(9, -34 + bob);
+    ctx.rotate(waving ? Math.sin(t * 9) * 0.3 - 0.2 : 0.5);
+    ctx.fillStyle = '#8a94a8'; ctx.fillRect(-2.2, -2, 4.4, 10);
+    ctx.strokeStyle = '#8a5a33'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(0, 13); ctx.stroke();
+    ctx.fillStyle = '#f2c94c'; ctx.fillRect(-3.4, 13, 6.8, 2.6);
+    ctx.fillStyle = '#c9d4e8';
+    ctx.beginPath(); ctx.moveTo(-2, 15.6); ctx.lineTo(2, 15.6); ctx.lineTo(0.8, 28); ctx.lineTo(-0.8, 28); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+  // 宠物鹰（骑士专属，独立于朝向坐标飞行）
+  if (n.id === 'knight') {
+    const ex = n.x - n.dir * 30 + Math.sin(t * 1.2) * 12;
+    const ey = GROUND_Y - 78 + Math.sin(t * 2.2) * 8;
+    ctx.save();
+    ctx.translate(ex, ey);
+    const flap = Math.sin(t * 9) * 7;
+    ctx.fillStyle = '#c99b5e';
+    ctx.beginPath(); ctx.moveTo(-5, -1); ctx.lineTo(-13, -6 - flap); ctx.lineTo(-5, 3); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(5, -1); ctx.lineTo(13, -6 - flap); ctx.lineTo(5, 3); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#8a5a33';
+    ctx.beginPath(); ctx.ellipse(0, 0, 8, 4.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8e2d0'; ctx.beginPath(); ctx.arc(6.4, -1.4, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f2c94c'; ctx.beginPath(); ctx.moveTo(8, -1.4); ctx.lineTo(10.6, -0.6); ctx.lineTo(8, 0.4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  // 名字标签 + 气泡（不随朝向翻转）
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.font = '11px "Microsoft YaHei","PingFang SC",sans-serif';
+  const nw = ctx.measureText(def.name).width;
+  ctx.fillStyle = 'rgba(10,14,26,0.55)';
+  rr(n.x - nw / 2 - 7, GROUND_Y - def.labelY - 9, nw + 14, 17, 6); ctx.fill();
+  ctx.restore();
+  txt(def.name, n.x, GROUND_Y - def.labelY, 11, '#ffe9a0', 'center', true);
+  drawNPCBubble(n);
+}
+
 /* ==================== BOSS：时空间吞噬者 ==================== */
 function makeBoss(x, y) {
   const L = LEVELS[G.level];
@@ -2095,6 +2272,7 @@ function update(dt) {
   G.runTime += dt;
   updatePlayer(dt);
   updateEnemies(dt);
+  updateNPCs(dt);
   updateBoss(dt);
   updateProjectiles(dt);
   updateHazards(dt);
@@ -2329,6 +2507,11 @@ function drawWorld() {
       ctx.beginPath(); ctx.moveTo(cx, cy - 7); ctx.lineTo(cx + 3.4, cy); ctx.lineTo(cx, cy + 7); ctx.lineTo(cx - 3.4, cy);
       ctx.closePath(); ctx.fill();
     }
+  }
+  // 友好彩蛋 NPC（头头/古堡小骑士）
+  for (const n of npcs) {
+    if (n.x < viewL - 80 || n.x > viewR + 80) continue;
+    drawNPC(n);
   }
   // 敌人
   for (const e of enemies) {
@@ -3247,7 +3430,7 @@ if (location.hash.indexOf('dbg') >= 0) {
   window.__hs = {
     G, LEVELS, DIFFS, get DIFF() { return DIFF; },
     get P() { return P; }, get hero() { return hero; }, setHeroH(h) { hero = h; },
-    get boss() { return boss; }, enemies: () => enemies, keys,
+    get boss() { return boss; }, enemies: () => enemies, npcs: () => npcs, keys,
     buildLevel, startRun, nextLevel, retryLevel, update,
     trySkill, useSkill, damagePlayer, dealDamage, makeEnemy, setDiff, unlockTo,
     prog: () => prog, setAV(a) { Object.assign(AV, a); },
