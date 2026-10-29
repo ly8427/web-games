@@ -639,88 +639,506 @@ function drawAuraFront(aura, t, main) {
 // 每关：ground=[x0,x1] 地面段（段与段之间=坑，掉落死亡）；plats=[x,y,w] 浮台
 // spikes=[x,w] 尖刺；flames=[x,period,offset] 喷火口；crushers=[x,period,offset] 压碎桩
 // seals=[x,y,w,h] 封印墙；enemies 出生点；pickups 红心/蓝晶；exit 终点传送门
+// pal = 配色索引；BOSS 关附 bossName/bossTint/bossHp/bossRate
+// 敌人种类：slime 史莱姆 / skel 骷髅弓手 / bat 蝙蝠 / shroom 毒蘑菇 / ghost 幽灵
+//           knight 铁甲卫士（正面格挡）/ bomber 爆弹蝠 / spitter 食人花 / sage 暗影术士
+/* ==== LEVEL-DATA-START ====（本标记之间为纯数据构建代码，供离线关卡校验脚本提取） */
 const SL = x => ({ type: 'slime', x });
 const SK = x => ({ type: 'skel', x });
 const BA = (x, y) => ({ type: 'bat', x, y });
 const HE = (x, y) => ({ type: 'heart', x, y });
 const CR = (x, y) => ({ type: 'crystal', x, y });
+// BOSS 配色（glow 平时辉光 / rage 三阶段 / b0,b1 身体渐变 / ring 漩涡环）
+const BOSS_TINTS = {
+  chrono: { glow: '#8a5fd0', rage: '#ff5a5a', b0: '#2c1646', b1: '#120820', ring: '#b28cff' }, // 时空间（原版配色）
+  shadow: { glow: '#7a5fd0', rage: '#ff5a5a', b0: '#241646', b1: '#100820', ring: '#a28cff' }, // 暗影
+  magma:  { glow: '#ff7a3a', rage: '#ffd050', b0: '#3a1408', b1: '#180804', ring: '#ff9a5a' }, // 熔核
+  frost:  { glow: '#5ac8ff', rage: '#ff5a5a', b0: '#10305a', b1: '#081426', ring: '#8ad8ff' }, // 霜寂
+  void:   { glow: '#a24aff', rage: '#ff3ad0', b0: '#20083a', b1: '#0a0418', ring: '#c86aff' }, // 封渊
+  venom:  { glow: '#6ae05a', rage: '#ffd050', b0: '#14360f', b1: '#06180a', ring: '#9ae87a' }, // 蚀毒
+};
+/* ---- 关卡构建器：游标 x 顺序拼接地面段/坑/浮台/机关。
+ * 跳跃物理上限（跳速560/重力1500/速度230）：跳高≈104px、同高最远≈171px；
+ * 构建规则：无垫脚坑宽≤140；浮台链上行高差≤82、水平空档≤126；尖刺条宽≤126 且距段边≥26 ---- */
+function LB(name, tip, pal) {
+  const L = { name, tip, pal, w: 0, spawn: 70,
+    ground: [], plats: [], walls: [], spikes: [], flames: [], crushers: [], seals: [],
+    enemies: [], pickups: [], signs: [], exit: null,
+    boss: false, bossSpawn: null, bossName: '时空间吞噬者', bossTint: BOSS_TINTS.chrono, bossHp: 1, bossRate: 1 };
+  let x = 0;
+  const api = {
+    L,
+    flat(len, o) { // o:{en:[[type,off,y?,elite?]], pk:[[type,off,y]], sp:[[off,w]], sg:[[off,txt]], fl:[[off,period,offset]], cr:[[off,period,offset]]}
+      o = o || {};
+      L.ground.push([x, x + len]);
+      for (const en of (o.en || [])) L.enemies.push({ type: en[0], x: x + en[1], y: en[2] || 0, elite: !!en[3] });
+      for (const pk of (o.pk || [])) L.pickups.push({ type: pk[0], x: x + pk[1], y: pk[2] });
+      for (const sp of (o.sp || [])) L.spikes.push([x + sp[0], sp[1]]);
+      for (const sg of (o.sg || [])) L.signs.push([x + sg[0], sg[1]]);
+      for (const f of (o.fl || [])) L.flames.push([x + f[0], f[1], f[2]]);
+      for (const c of (o.cr || [])) L.crushers.push([x + c[0], c[1], c[2]]);
+      x += len;
+      return api;
+    },
+    gap(w, stones, pk) { // 坑；stones:[[dx,y,w]] 相对坑起点；pk:[[dx,y]]
+      for (const st of (stones || [])) L.plats.push([x + st[0], st[1], st[2]]);
+      for (const p2 of (pk || [])) L.pickups.push({ type: 'crystal', x: x + p2[0], y: p2[1] });
+      x += w;
+      return api;
+    },
+    plats(list) { for (const p of list) L.plats.push([p[0], p[1], p[2]]); return api; },
+    sealGate() { // 高低双层封印墙，中空窗通过（同原第四关安全型）
+      L.seals.push([x, 0, 26, 206], [x, 392, 26, 78]);
+      x += 26;
+      return api;
+    },
+    exitPad(len, o) {
+      o = o || {};
+      L.ground.push([x, x + len]);
+      for (const pk of (o.pk || [])) L.pickups.push({ type: pk[0], x: x + pk[1], y: pk[2] });
+      for (const sg of (o.sg || [])) L.signs.push([x + sg[0], sg[1]]);
+      L.exit = x + len - 80;
+      x += len;
+      L.w = x + 60;
+      return api;
+    },
+  };
+  return api;
+}
+// BOSS 竞技场（封闭场地 + 双侧墙 + 补给）
+function ARENA(name, tip, pal, o) {
+  o = o || {};
+  return {
+    name, tip, pal, w: 1660, spawn: 80,
+    ground: [[0, 1660]], plats: o.plats || [], walls: [[0, 0, 36, 470], [1624, 0, 36, 470]],
+    spikes: [], flames: o.flames || [], crushers: [], seals: o.seals || [],
+    enemies: o.enemies || [],
+    pickups: o.pickups || [
+      { type: 'heart', x: 300, y: 440 }, { type: 'heart', x: 1360, y: 440 },
+      { type: 'crystal', x: 720, y: 440 }, { type: 'crystal', x: 940, y: 440 },
+    ],
+    signs: [], exit: null, boss: true, bossSpawn: [1180, 240],
+    bossName: o.bossName || '时空间吞噬者', bossTint: o.tint || BOSS_TINTS.chrono,
+    bossHp: o.hp || 1, bossRate: o.rate || 1,
+  };
+}
+/* ---- 原版手作 5 关（保留原数据，归入对应世界） ---- */
+const ORIG_L1 = {
+  name: '1-1 · 星语平原', tip: 'A/D 移动 · 空格跳跃 · J 挥剑 · K 技能', pal: 0,
+  w: 3400, spawn: 70,
+  ground: [[0, 700], [820, 1520], [1640, 2360], [2480, 3400]],
+  plats: [[560, 388, 150], [1040, 386, 130], [1900, 384, 160], [2700, 382, 140]],
+  walls: [], spikes: [], flames: [], crushers: [], seals: [],
+  enemies: [SL(390), SL(1180), SL(1985), SL(2620)],
+  pickups: [HE(1100, 358), CR(1975, 356), HE(2765, 354)],
+  signs: [[130, 'A/D 或方向键移动 · 空格/W 跳跃'], [470, 'J 或鼠标左键挥剑'], [950, '红心回血 · 蓝晶回充能'], [2350, '小心坑洞，掉落即倒下']],
+  exit: 3280, boss: false, bossName: '', bossTint: null, bossHp: 1, bossRate: 1,
+};
+const ORIG_L2 = {
+  name: '2-1 · 时焰回廊', tip: '观察机关节奏 · 时滞领域能拖慢一切机关', pal: 1,
+  w: 3600, spawn: 70,
+  ground: [[0, 1000], [1120, 2500], [2620, 3600]],
+  plats: [[470, 382, 130], [1060, 382, 110], [1600, 388, 150], [2120, 382, 150], [2452, 402, 74], [2580, 382, 110], [3000, 382, 150]],
+  walls: [], spikes: [[1240, 100], [2420, 78]],
+  flames: [[620, 3.6, 0], [1450, 3.6, 1.2], [2300, 3.6, 2.4], [3150, 3.6, 0.6]],
+  crushers: [[860, 3.4, 0], [1900, 3.4, 1.1], [2760, 3.4, 2.2], [3300, 3.4, 0.5]],
+  seals: [],
+  enemies: [SK(760), SK(1720), SK(2900), SL(2100), SL(3420)],
+  pickups: [HE(1660, 360), CR(2190, 354), HE(3060, 354)],
+  signs: [], exit: 3500, boss: false, bossName: '', bossTint: null, bossHp: 1, bossRate: 1,
+};
+const ORIG_L3 = {
+  name: '3-1 · 断崖之径', tip: '跨越断崖 · 沿浮台层层登高可取蓝晶', pal: 2,
+  w: 3800, spawn: 60,
+  ground: [[0, 500], [760, 900], [1560, 1700], [2500, 2640], [3300, 3800]],
+  plats: [[560, 420, 90], [960, 400, 120], [1140, 330, 120], [1320, 400, 120], [1000, 310, 120],
+          [1820, 430, 110], [2000, 380, 110], [2180, 430, 110], [2360, 380, 110], [2060, 290, 120],
+          [2760, 408, 110], [2940, 338, 110], [3120, 408, 110], [2980, 250, 120]],
+  walls: [], spikes: [], flames: [], crushers: [], seals: [],
+  enemies: [BA(630, 400), BA(1050, 330), BA(1230, 270), BA(1900, 390), BA(2450, 300), BA(2900, 330), BA(3060, 260),
+            SL(1620), SL(3400), SL(3600)],
+  pickups: [CR(1050, 282), CR(2110, 262), CR(3040, 222), HE(1195, 300), HE(3450, 436)],
+  signs: [], exit: 3700, boss: false, bossName: '', bossTint: null, bossHp: 1, bossRate: 1,
+};
+const ORIG_L4 = {
+  name: '4-1 · 封印回廊', tip: '紫黑封印墙完全阻挡跃迁 · 只能硬闯机关门', pal: 3,
+  w: 4000, spawn: 70,
+  ground: [[0, 4000]],
+  plats: [[520, 386, 130], [1060, 384, 140], [1780, 386, 140], [2600, 384, 140], [3300, 386, 130]],
+  walls: [],
+  spikes: [[740, 104], [2740, 104]],
+  flames: [[1600, 3.6, 0], [2480, 3.6, 1.2], [3450, 3.6, 2.4]],
+  crushers: [[900, 3.4, 0.3], [1900, 3.4, 1.4], [3050, 3.4, 2.5]],
+  seals: [[1250, 0, 26, 206], [1250, 392, 26, 78], [2100, 0, 26, 242], [2950, 0, 26, 206], [2950, 392, 26, 78]],
+  enemies: [SK(980), SK(2350), SK(3620), SL(1500), SL(3250), BA(1800, 320), BA(2700, 300)],
+  pickups: [HE(1830, 358), CR(2650, 356), HE(3360, 358)],
+  signs: [], exit: 3900, boss: false, bossName: '', bossTint: null, bossHp: 1, bossRate: 1,
+};
+const ORIG_L5 = { // 最终 BOSS 战（原版场地）
+  name: '6-6 · 终焉吞噬之巢', tip: '击败三阶段的「时空间吞噬者」！', pal: 4,
+  w: 1600, spawn: 80,
+  ground: [[0, 1600]],
+  plats: [[230, 386, 150], [1180, 386, 150], [640, 386, 320]],
+  walls: [[0, 0, 36, 470], [1564, 0, 36, 470]],
+  spikes: [], flames: [], crushers: [], seals: [],
+  enemies: [],
+  pickups: [HE(300, 358), HE(1300, 358), CR(720, 358), CR(880, 358)],
+  signs: [], exit: null, boss: true, bossSpawn: [1150, 240],
+  bossName: '时空间吞噬者', bossTint: BOSS_TINTS.chrono, bossHp: 1.1, bossRate: 1.15,
+};
+/* ---- 世界一：星语平原（基础：史莱姆/蝙蝠/史莱姆王） ---- */
+const W1_2 = LB('1-2 · 蝠群洞窟', '小心成群的蝙蝠 · 停在原地会被围住', 0)
+  .flat(560, { sg: [[150, '蝙蝠会朝你扑来——挥剑或跳开！']], en: [['bat', 380, 380]] })
+  .gap(120)
+  .flat(500, { en: [['bat', 180, 340], ['bat', 320, 400], ['slime', 400]], pk: [['heart', 240, 440]] })
+  .gap(130, [[40, 404, 84]])
+  .flat(560, { en: [['bat', 160, 320], ['bat', 420, 380]], pk: [['crystal', 300, 440]] })
+  .gap(140)
+  .flat(460, { en: [['slime', 220], ['bat', 340, 360]] })
+  .gap(120)
+  .flat(520, { en: [['slime', 160], ['bat', 300, 340], ['slime', 420]], pk: [['heart', 380, 440]] })
+  .gap(130, [[46, 402, 84]])
+  .exitPad(360, { sg: [[120, '传送门就在前方！']] }).L;
+const W1_3 = LB('1-3 · 史莱姆营地', '踩平史莱姆营地 · 小心对岸的大块头', 0)
+  .flat(520, { en: [['slime', 260]], pk: [['crystal', 400, 440]] })
+  .gap(130)
+  .flat(560, { en: [['slime', 180], ['slime', 340], ['bat', 460, 380]], pk: [['heart', 260, 440]] })
+  .gap(140, [[50, 400, 80]])
+  .flat(620, { en: [['slime', 200], ['slime', 460]], sp: [[280, 90]] })
+  .gap(120)
+  .flat(540, { en: [['slime', 260, 0, true], ['slime', 440]], sg: [[160, '史莱姆王：血厚体大——拉开距离逐剑削！']], pk: [['heart', 240, 440], ['crystal', 460, 440]] })
+  .gap(130)
+  .exitPad(340).L;
+const W1_4 = LB('1-4 · 石阶高塔', '沿浮台层层登高 · 高处的蓝晶是奖励', 0)
+  .flat(480, { en: [['slime', 300]], sg: [[150, '跳上浮台，一层比一层高！']] })
+  .gap(380, [[60, 408, 88], [172, 344, 88], [272, 280, 96]], [[216, 274]])
+  .flat(420, { en: [['bat', 200, 330]], pk: [['heart', 300, 440]] })
+  .gap(300, [[56, 396, 92], [180, 330, 92]])
+  .flat(460, { en: [['slime', 200], ['bat', 360, 340]] })
+  .gap(360, [[60, 396, 90], [168, 330, 90], [262, 398, 84]])
+  .exitPad(360, { pk: [['heart', 200, 440]] }).L;
+const W1_5 = LB('1-5 · 平原隘口', '世界一最终试炼：蝠群、深坑与尖刺', 0)
+  .flat(500, { en: [['slime', 240], ['bat', 380, 360]] })
+  .gap(140)
+  .flat(540, { en: [['bat', 200, 330], ['slime', 380]], sp: [[240, 100]], pk: [['heart', 120, 440]] })
+  .gap(240, [[52, 398, 88], [150, 398, 88]])
+  .flat(560, { en: [['slime', 180], ['bat', 320, 340], ['bat', 470, 380]], pk: [['crystal', 300, 440]] })
+  .gap(130)
+  .flat(520, { en: [['slime', 200], ['slime', 360]], sp: [[150, 90]] })
+  .gap(140, [[48, 402, 84]])
+  .exitPad(380, { pk: [['heart', 240, 440]] }).L;
+/* ---- 世界二：时焰回廊（机关 + 骷髅/爆弹蝠/骷髅队长） ---- */
+const W2_2 = LB('2-2 · 爆弹蝠巢', '爆弹蝠会朝你脚下丢炸弹——看清落点再移动', 1)
+  .flat(560, { sg: [[150, '炸弹落地会炸——别站着不动！']], en: [['bomber', 380, 240]] })
+  .gap(120)
+  .flat(540, { en: [['bomber', 200, 230], ['skel', 400]], pk: [['heart', 280, 440]] })
+  .gap(140, [[46, 400, 86]])
+  .flat(580, { en: [['bomber', 180, 220], ['skel', 360]], sp: [[260, 96]] })
+  .gap(130)
+  .flat(520, { en: [['bomber', 240, 235], ['slime', 400]], pk: [['crystal', 300, 440]] })
+  .gap(140)
+  .exitPad(360, { pk: [['heart', 220, 440]] }).L;
+const W2_3 = LB('2-3 · 烈焰长廊', '数着喷火口的节奏走 · 骷髅在火间放冷箭', 1)
+  .flat(620, { fl: [[300, 3.6, 0]], en: [['skel', 480]], sg: [[150, '喷火口亮灯预警——亮了就撤！']] })
+  .gap(120)
+  .flat(660, { fl: [[220, 3.6, 1.1], [520, 3.6, 2.2]], en: [['skel', 380]], pk: [['heart', 300, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(680, { fl: [[200, 3.4, 0.5], [440, 3.4, 1.6]], en: [['skel', 320], ['bomber', 540, 240]], sp: [[560, 80]] })
+  .gap(130)
+  .flat(560, { fl: [[280, 3.6, 0.8]], en: [['skel', 440]], pk: [['crystal', 200, 440]] })
+  .gap(120)
+  .exitPad(380).L;
+const W2_4 = LB('2-4 · 压碎矿洞', '压碎桩落下前快步穿过 · 小心骷髅队长的箭雨', 1)
+  .flat(640, { cr: [[300, 3.4, 0]], en: [['skel', 500]], sg: [[140, '影子亮起=压碎桩即将砸下！']] })
+  .gap(130)
+  .flat(720, { cr: [[200, 3.4, 1.1], [480, 3.4, 2.2]], en: [['skel', 350]], pk: [['heart', 560, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(660, { cr: [[180, 3.2, 0.4], [420, 3.2, 1.5]], en: [['skel', 300, 0, true], ['bomber', 540, 235]], sp: [[540, 84]] })
+  .gap(130)
+  .flat(540, { cr: [[260, 3.4, 0.9]], en: [['skel', 420]], pk: [['crystal', 160, 440]] })
+  .gap(120)
+  .exitPad(380, { pk: [['heart', 240, 440]] }).L;
+const W2_5 = LB('2-5 · 熔火回环', '火焰、桩、尖刺与箭雨一齐上——稳住节奏', 1)
+  .flat(600, { fl: [[240, 3.6, 0]], en: [['skel', 440]] })
+  .gap(140, [[48, 402, 86]])
+  .flat(620, { cr: [[200, 3.4, 0.6], [520, 3.4, 1.8]], en: [['bomber', 360, 235]] })
+  .gap(130)
+  .flat(640, { fl: [[180, 3.4, 0.9]], sp: [[260, 100]], en: [['skel', 500]], pk: [['heart', 120, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(600, { cr: [[300, 3.2, 0.2]], en: [['skel', 160], ['skel', 480]], pk: [['crystal', 380, 440]] })
+  .gap(130)
+  .flat(540, { fl: [[260, 3.6, 1.4]], sp: [[140, 88]], en: [['bomber', 400, 240]] })
+  .gap(120)
+  .exitPad(380, { pk: [['heart', 220, 440]] }).L;
+/* ---- 世界三：断崖之径（跑酷 + 幽灵/蝠王） ---- */
+const W3_2 = LB('3-2 · 幽灵雾径', '幽灵会穿墙追你——别停，也别被逼进死角', 2)
+  .flat(520, { sg: [[150, '幽灵防不住也挡不住，只能跑！']], en: [['ghost', 360, 330]] })
+  .gap(130)
+  .flat(520, { en: [['ghost', 240, 300], ['bat', 400, 340]], pk: [['heart', 140, 440]] })
+  .gap(240, [[52, 398, 88], [150, 398, 88]])
+  .flat(560, { en: [['ghost', 200, 280], ['ghost', 420, 360]], pk: [['crystal', 320, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(520, { en: [['bat', 200, 330], ['ghost', 380, 300]] })
+  .gap(130)
+  .flat(540, { en: [['ghost', 240, 320], ['bat', 400, 350]], pk: [['heart', 320, 440]] })
+  .gap(120)
+  .exitPad(360).L;
+const W3_3 = LB('3-3 · 浮空石阵', '浮空石阵步步惊心 · 幽灵与蝠群夹击', 2)
+  .flat(460, { en: [['bat', 300, 340]] })
+  .gap(360, [[56, 396, 90], [170, 328, 90], [262, 396, 84]])
+  .flat(420, { en: [['ghost', 220, 300]], pk: [['heart', 300, 440]] })
+  .gap(340, [[52, 392, 90], [176, 326, 92]])
+  .flat(460, { en: [['bat', 200, 320], ['bat', 380, 360]] })
+  .gap(440, [[54, 396, 88], [166, 330, 88], [262, 276, 88], [354, 330, 84]])
+  .flat(440, { en: [['ghost', 200, 280], ['ghost', 380, 340]], pk: [['crystal', 300, 440]] })
+  .gap(300, [[56, 396, 90], [170, 330, 90]])
+  .exitPad(360, { pk: [['heart', 220, 440]] }).L;
+const W3_4 = LB('3-4 · 蝠王峭壁', '峭壁高台藏着蝠王 · 摘下高处的蓝晶', 2)
+  .flat(480, { en: [['bat', 300, 350]], sg: [[150, '蝠王就在前方——小心它的俯冲！']] })
+  .gap(520, [[60, 400, 88], [172, 336, 88], [284, 272, 88], [396, 336, 88]], [[328, 200]])
+  .flat(440, { en: [['bat', 220, 300, true], ['bat', 360, 360]], pk: [['heart', 120, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(520, { en: [['ghost', 240, 300], ['bat', 400, 340]] })
+  .gap(260, [[52, 394, 88], [148, 330, 88]])
+  .exitPad(380, { pk: [['heart', 240, 440]] }).L;
+const W3_5 = LB('3-5 · 风脊绝道', '世界三最终试炼：长跳、尖刺与无孔不入的幽灵', 2)
+  .flat(480, { en: [['bat', 280, 340]] })
+  .gap(140)
+  .flat(520, { en: [['ghost', 200, 300]], sp: [[240, 96]], pk: [['heart', 120, 440]] })
+  .gap(280, [[54, 396, 88], [172, 396, 88]])
+  .flat(520, { en: [['bat', 180, 320], ['ghost', 360, 270]] })
+  .gap(260, [[52, 396, 88], [170, 330, 88]])
+  .flat(540, { en: [['bat', 200, 330], ['bat', 380, 360]], pk: [['crystal', 300, 440]] })
+  .gap(240, [[52, 398, 88], [150, 398, 88]])
+  .flat(520, { en: [['ghost', 240, 310], ['bat', 400, 340]], sp: [[150, 88]] })
+  .gap(140)
+  .exitPad(380, { pk: [['heart', 240, 440]] }).L;
+/* ---- 世界四：封印回廊（封印门 + 铁甲卫士/暗影术士/卫士长/术士长老） ---- */
+const W4_2 = LB('4-2 · 铁甲哨站', '铁甲卫士的盾能挡正面攻击——绕到背后打！', 3)
+  .flat(560, { sg: [[150, '正面打盾只掉一点点血；跳到背后才是全伤！']], en: [['knight', 380]] })
+  .gap(130)
+  .flat(620, { en: [['knight', 200], ['skel', 460]], pk: [['heart', 320, 440]] })
+  .sealGate()
+  .flat(560, { en: [['knight', 300]], pk: [['crystal', 440, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(600, { en: [['knight', 220], ['bat', 420, 330]], sp: [[320, 90]] })
+  .gap(130)
+  .flat(520, { en: [['knight', 260], ['skel', 420]], pk: [['heart', 140, 440]] })
+  .gap(120)
+  .exitPad(360).L;
+const W4_3 = LB('4-3 · 术士迷阵', '暗影术士会瞬移到你身边放弹幕——保持移动', 3)
+  .flat(560, { sg: [[150, '术士瞬移有前摇，看到紫光就侧移！']], en: [['sage', 380]] })
+  .gap(130)
+  .flat(600, { en: [['sage', 240], ['skel', 460]], pk: [['heart', 140, 440]] })
+  .sealGate()
+  .flat(560, { en: [['sage', 300], ['bat', 440, 330]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(620, { en: [['sage', 220], ['knight', 480]], pk: [['crystal', 340, 440]] })
+  .sealGate()
+  .flat(540, { en: [['sage', 260], ['skel', 430]], pk: [['heart', 380, 440]] })
+  .gap(130)
+  .exitPad(360).L;
+const W4_4 = LB('4-4 · 卫士长大厅', '卫士长的盾更大、冲撞更猛——引它撞空再绕背', 3)
+  .flat(620, { cr: [[300, 3.4, 0]], en: [['knight', 480]], sg: [[150, '卫士长冲刺前会举盾发亮——跳开！']] })
+  .gap(130)
+  .flat(640, { cr: [[220, 3.4, 1.2], [520, 3.4, 2.4]], en: [['knight', 380]], pk: [['heart', 140, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(660, { cr: [[180, 3.2, 0.5]], en: [['knight', 260, 0, true], ['sage', 500]], pk: [['crystal', 560, 440]] })
+  .sealGate()
+  .flat(560, { en: [['knight', 300]], sp: [[400, 84]] })
+  .gap(130)
+  .exitPad(380, { pk: [['heart', 240, 440]] }).L;
+const W4_5 = LB('4-5 · 封印深渊', '世界四最终试炼：封印门后藏着术士长老', 3)
+  .flat(560, { en: [['knight', 300], ['skel', 470]] })
+  .sealGate()
+  .flat(560, { en: [['sage', 240], ['bat', 420, 330]], pk: [['heart', 140, 440]] })
+  .gap(240, [[52, 398, 88], [150, 398, 88]])
+  .flat(620, { cr: [[280, 3.4, 0.7]], en: [['knight', 160], ['sage', 480]], pk: [['crystal', 360, 440]] })
+  .sealGate()
+  .flat(560, { en: [['sage', 240, 0, true], ['knight', 420]], pk: [['heart', 320, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(520, { en: [['skel', 240], ['sage', 420]] })
+  .gap(130)
+  .exitPad(360).L;
+/* ---- 世界五：毒雾沼泽（毒蘑菇/食人花/毒菇王/花后） ---- */
+const W5_1 = LB('5-1 · 毒雾林间', '毒蘑菇会喷出毒孢子——离远点或跳过孢子', 5)
+  .flat(560, { sg: [[150, '毒孢子落地即散——看好弧线再起跳！']], en: [['shroom', 380]] })
+  .gap(130)
+  .flat(560, { en: [['shroom', 220], ['slime', 420]], pk: [['heart', 140, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(600, { en: [['shroom', 200], ['shroom', 440]], sp: [[300, 90]] })
+  .gap(130)
+  .flat(560, { en: [['shroom', 240], ['bat', 420, 340]], pk: [['crystal', 140, 440]] })
+  .gap(120)
+  .flat(520, { en: [['shroom', 300], ['slime', 440]] })
+  .gap(130, [[46, 402, 84]])
+  .exitPad(360, { pk: [['heart', 240, 440]] }).L;
+const W5_2 = LB('5-2 · 食人花泽', '食人花扎根不动，但会三连喷籽——横向躲', 5)
+  .flat(580, { sg: [[150, '食人花射程很远，跳跃中也会被瞄！']], en: [['spitter', 400]] })
+  .gap(130)
+  .flat(560, { en: [['spitter', 220], ['shroom', 420]], pk: [['heart', 140, 440]] })
+  .gap(240, [[52, 398, 88], [150, 398, 88]])
+  .flat(600, { en: [['spitter', 240], ['spitter', 480]], sp: [[330, 88]] })
+  .gap(130)
+  .flat(560, { en: [['spitter', 200], ['shroom', 420]], pk: [['crystal', 340, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .exitPad(360, { pk: [['heart', 240, 440]] }).L;
+const W5_3 = LB('5-3 · 毒菇王沼地', '沼泽处处是坑 · 毒菇王的孢子漫天飞', 5)
+  .flat(520, { en: [['shroom', 300]] })
+  .gap(140)
+  .flat(560, { en: [['shroom', 240, 0, true], ['spitter', 420]], pk: [['heart', 140, 440]] })
+  .gap(260, [[52, 396, 88], [148, 332, 88]])
+  .flat(560, { en: [['spitter', 220], ['shroom', 440]], pk: [['crystal', 340, 440]] })
+  .gap(240, [[52, 398, 88], [150, 398, 88]])
+  .flat(560, { en: [['ghost', 220, 300], ['shroom', 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(520, { en: [['spitter', 300]], sp: [[180, 86]] })
+  .gap(130)
+  .exitPad(360, { pk: [['heart', 240, 440]] }).L;
+const W5_4 = LB('5-4 · 花后庭园', '食人花后的籽幕更密 · 幽灵在花间游荡', 5)
+  .flat(560, { en: [['spitter', 380]], sg: [[150, '花后一次喷三路——贴脸反而安全！']] })
+  .gap(130)
+  .flat(580, { en: [['spitter', 240, 0, true], ['shroom', 460]], pk: [['heart', 140, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(600, { en: [['ghost', 200, 300], ['spitter', 440]], sp: [[280, 90]] })
+  .gap(240, [[52, 398, 88], [150, 398, 88]])
+  .flat(560, { en: [['spitter', 220], ['ghost', 420, 310]], pk: [['crystal', 340, 440]] })
+  .gap(130)
+  .flat(520, { en: [['shroom', 300], ['spitter', 440]] })
+  .gap(130, [[46, 402, 84]])
+  .exitPad(360, { pk: [['heart', 240, 440]] }).L;
+const W5_5 = LB('5-5 · 蚀毒绝泽', '世界五最终试炼：毒雾、尖刺与深沼一齐涌来', 5)
+  .flat(540, { en: [['shroom', 280], ['slime', 440]] })
+  .gap(140, [[48, 402, 86]])
+  .flat(580, { en: [['spitter', 220], ['shroom', 460]], sp: [[300, 92]] })
+  .gap(240, [[52, 396, 88], [148, 332, 88]])
+  .flat(600, { en: [['ghost', 200, 290], ['spitter', 380], ['shroom', 520]], pk: [['heart', 140, 440], ['crystal', 460, 440]] })
+  .gap(140)
+  .flat(560, { en: [['spitter', 240], ['ghost', 420, 320]] })
+  .gap(260, [[52, 398, 88], [170, 330, 88]])
+  .flat(540, { en: [['shroom', 220], ['spitter', 420]], sp: [[300, 84]] })
+  .gap(130)
+  .exitPad(380, { pk: [['heart', 240, 440]] }).L;
+/* ---- 世界六：星陨之心（全明星阵容 + 最终天梯） ---- */
+const W6_1 = LB('6-1 · 星陨哨线', '星陨之地强敌林立：卫士与术士同守哨线', 4)
+  .flat(560, { en: [['knight', 380]], sg: [[150, '最终世界：所有强敌都会登场！']] })
+  .gap(130)
+  .flat(600, { en: [['sage', 220], ['knight', 460]], fl: [[340, 4.0, 0]], pk: [['heart', 140, 440]] })
+  .sealGate()
+  .flat(560, { en: [['sage', 260], ['skel', 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(600, { en: [['knight', 220], ['sage', 480]], sp: [[320, 92]] })
+  .gap(130)
+  .flat(540, { en: [['knight', 300], ['bomber', 430, 235]], pk: [['crystal', 160, 440]] })
+  .gap(130, [[46, 402, 84]])
+  .exitPad(360, { pk: [['heart', 240, 440]] }).L;
+const W6_2 = LB('6-2 · 熔屑风暴', '爆弹群在火雨间穿梭——盯紧天与地', 4)
+  .flat(580, { fl: [[300, 3.6, 0]], en: [['bomber', 420, 235]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(620, { fl: [[220, 3.6, 1.2], [500, 3.4, 2.4]], en: [['bomber', 340, 225]], sp: [[380, 88]] })
+  .gap(130)
+  .flat(600, { cr: [[300, 3.2, 0.4]], en: [['bomber', 200, 230], ['skel', 480]], pk: [['heart', 140, 440]] })
+  .gap(240, [[52, 398, 88], [150, 398, 88]])
+  .flat(580, { fl: [[260, 3.4, 0.8]], en: [['bomber', 400, 240]], pk: [['crystal', 380, 440]] })
+  .gap(140)
+  .flat(520, { en: [['bomber', 240, 230], ['skel', 420]], sp: [[300, 84]] })
+  .gap(130)
+  .exitPad(380, { pk: [['heart', 240, 440]] }).L;
+const W6_3 = LB('6-3 · 幽影回廊', '幽灵成群 + 尖刺满地：没有安全角落', 4)
+  .flat(540, { en: [['ghost', 300, 310]] })
+  .gap(140)
+  .flat(560, { en: [['ghost', 200, 280], ['sage', 440]], sp: [[260, 92]], pk: [['heart', 140, 440]] })
+  .gap(240, [[52, 398, 88], [150, 398, 88]])
+  .flat(600, { en: [['ghost', 200, 290], ['ghost', 420, 350]], sp: [[300, 96]] })
+  .gap(260, [[52, 396, 88], [168, 332, 88]])
+  .flat(580, { en: [['sage', 220], ['ghost', 400, 300]], pk: [['crystal', 340, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(540, { en: [['ghost', 240, 320], ['sage', 420]], sp: [[300, 84]] })
+  .gap(130)
+  .exitPad(360, { pk: [['heart', 240, 440]] }).L;
+const W6_4 = LB('6-4 · 双王试炼', '卫士长与术士长老同场——逐一击破', 4)
+  .flat(600, { en: [['knight', 300]], sg: [[150, '先解决小怪，再单挑两位长老！']] })
+  .sealGate()
+  .flat(560, { en: [['sage', 240], ['skel', 460]], pk: [['heart', 140, 440]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(720, { en: [['knight', 260, 0, true], ['sage', 520]], cr: [[400, 3.4, 1.0]], pk: [['crystal', 200, 440]] })
+  .sealGate()
+  .flat(640, { en: [['sage', 260, 0, true], ['knight', 520]], pk: [['heart', 380, 440]] })
+  .gap(130)
+  .flat(520, { en: [['bat', 240, 330], ['skel', 420]] })
+  .gap(130)
+  .exitPad(360, { pk: [['heart', 240, 440]] }).L;
+const W6_5 = LB('6-5 · 星陨天梯', '最终试炼前的天梯：登顶者方见吞噬者', 4)
+  .flat(500, { en: [['knight', 300]] })
+  .gap(360, [[56, 396, 90], [168, 330, 90], [262, 276, 90], [348, 330, 86]], [[306, 204]])
+  .flat(440, { en: [['ghost', 220, 280]], pk: [['heart', 320, 440]] })
+  .gap(340, [[52, 392, 90], [176, 326, 92]])
+  .flat(460, { en: [['bomber', 220, 235], ['sage', 400]] })
+  .gap(440, [[54, 396, 88], [166, 330, 88], [262, 276, 88], [354, 330, 84]])
+  .flat(440, { en: [['shroom', 240, 0, true]], pk: [['heart', 300, 440], ['crystal', 380, 440]] })
+  .gap(300, [[56, 396, 90], [170, 330, 90]])
+  .flat(480, { en: [['ghost', 220, 290], ['spitter', 400]] })
+  .gap(140, [[48, 400, 86]])
+  .flat(500, { en: [['knight', 260], ['bomber', 420, 230]], sp: [[320, 88]] })
+  .gap(130)
+  .exitPad(380, { pk: [['heart', 240, 440]] }).L;
+/* ---- BOSS 竞技场（每个世界末一座） ---- */
+const ARENA_1 = ARENA('1-6 · 暗影吞噬者', '击败把平原拖进黑夜的暗影吞噬者！', 0, {
+  plats: [[230, 386, 150], [1180, 386, 150]],
+  bossName: '暗影吞噬者', tint: BOSS_TINTS.shadow, hp: 0.55, rate: 0.85,
+});
+const ARENA_2 = ARENA('2-6 · 熔核吞噬者', '地板会喷火——用中央高台走位！', 1, {
+  plats: [[620, 386, 300]], flames: [[480, 4.6, 0], [1120, 4.6, 2.3]],
+  bossName: '熔核吞噬者', tint: BOSS_TINTS.magma, hp: 0.7, rate: 0.92,
+});
+const ARENA_3 = ARENA('3-6 · 霜寂吞噬者', '两侧阶梯是它的猎场，也是你的掩体', 2, {
+  plats: [[160, 400, 110], [300, 330, 110], [440, 260, 110], [1110, 260, 110], [1250, 330, 110], [1390, 400, 110]],
+  bossName: '霜寂吞噬者', tint: BOSS_TINTS.frost, hp: 0.8, rate: 1,
+});
+const ARENA_4 = ARENA('4-6 · 封渊吞噬者', '矮封印墙隔出三块战区——小心爪击与激光', 3, {
+  plats: [[760, 350, 140]], seals: [[520, 392, 26, 78], [1120, 392, 26, 78]],
+  bossName: '封渊吞噬者', tint: BOSS_TINTS.void, hp: 0.9, rate: 1.05,
+});
+const ARENA_5 = ARENA('5-6 · 蚀毒吞噬者', '角落的食人花会趁乱喷籽——优先拔掉！', 5, {
+  plats: [[620, 386, 130], [910, 386, 130]], enemies: [{ type: 'spitter', x: 280 }, { type: 'spitter', x: 1420 }],
+  bossName: '蚀毒吞噬者', tint: BOSS_TINTS.venom, hp: 1, rate: 1.1,
+});
 const LEVELS = [
-  { // 第 1 关：教学关
-    name: '第一关 · 星语平原', tip: 'A/D 移动 · 空格跳跃 · J 挥剑 · K 技能',
-    w: 3400, spawn: 70,
-    ground: [[0, 700], [820, 1520], [1640, 2360], [2480, 3400]],
-    plats: [[560, 388, 150], [1040, 386, 130], [1900, 384, 160], [2700, 382, 140]],
-    walls: [], spikes: [], flames: [], crushers: [], seals: [],
-    enemies: [SL(390), SL(1180), SL(1985), SL(2620)],
-    pickups: [HE(1100, 358), CR(1975, 356), HE(2765, 354)],
-    signs: [[130, 'A/D 或方向键移动 · 空格/W 跳跃'], [470, 'J 或鼠标左键挥剑'], [950, '红心回血 · 蓝晶回充能'], [2350, '小心坑洞，掉落即倒下']],
-    exit: 3280, boss: false,
-  },
-  { // 第 2 关：机关关（时序喷火 + 压碎桩 + 弓手）
-    name: '第二关 · 时焰回廊', tip: '观察机关节奏 · 时滞领域能拖慢一切机关',
-    w: 3600, spawn: 70,
-    ground: [[0, 1000], [1120, 2500], [2620, 3600]],
-    plats: [[470, 382, 130], [1060, 382, 110], [1600, 388, 150], [2120, 382, 150], [2452, 402, 74], [2580, 382, 110], [3000, 382, 150]],
-    walls: [], spikes: [[1240, 100], [2420, 78]],
-    flames: [[620, 3.6, 0], [1450, 3.6, 1.2], [2300, 3.6, 2.4], [3150, 3.6, 0.6]],
-    crushers: [[860, 3.4, 0], [1900, 3.4, 1.1], [2760, 3.4, 2.2], [3300, 3.4, 0.5]],
-    seals: [],
-    enemies: [SK(760), SK(1720), SK(2900), SL(2100), SL(3420)],
-    pickups: [HE(1660, 360), CR(2190, 354), HE(3060, 354)],
-    signs: [], exit: 3500, boss: false,
-  },
-  { // 第 3 关：跑图关（大坑与高台，跃迁闪价值）
-    name: '第三关 · 断崖之径', tip: '跨越断崖 · 沿浮台层层登高可取蓝晶',
-    w: 3800, spawn: 60,
-    ground: [[0, 500], [760, 900], [1560, 1700], [2500, 2640], [3300, 3800]],
-    plats: [[560, 420, 90], [960, 400, 120], [1140, 330, 120], [1320, 400, 120], [1000, 310, 120],
-            [1820, 430, 110], [2000, 380, 110], [2180, 430, 110], [2360, 380, 110], [2060, 290, 120],
-            [2760, 408, 110], [2940, 338, 110], [3120, 408, 110], [2980, 250, 120]],
-    walls: [], spikes: [], flames: [], crushers: [], seals: [],
-    enemies: [BA(630, 400), BA(1050, 330), BA(1230, 270), BA(1900, 390), BA(2450, 300), BA(2900, 330), BA(3060, 260),
-              SL(1620), SL(3400), SL(3600)],
-    pickups: [CR(1050, 282), CR(2110, 262), CR(3040, 222), HE(1195, 300), HE(3450, 436)],
-    signs: [], exit: 3700, boss: false,
-  },
-  { // 第 4 关：封印走廊（封印墙完全阻挡跃迁 + 连环机关）
-    name: '第四关 · 封印回廊', tip: '紫黑封印墙完全阻挡跃迁 · 只能硬闯机关门',
-    w: 4000, spawn: 70,
-    ground: [[0, 4000]],
-    plats: [[520, 386, 130], [1060, 384, 140], [1780, 386, 140], [2600, 384, 140], [3300, 386, 130]],
-    walls: [],
-    spikes: [[740, 104], [2740, 104]],
-    flames: [[1600, 3.6, 0], [2480, 3.6, 1.2], [3450, 3.6, 2.4]],
-    crushers: [[900, 3.4, 0.3], [1900, 3.4, 1.4], [3050, 3.4, 2.5]],
-    seals: [[1250, 0, 26, 206], [1250, 392, 26, 78], [2100, 0, 26, 242], [2950, 0, 26, 206], [2950, 392, 26, 78]],
-    enemies: [SK(980), SK(2350), SK(3620), SL(1500), SL(3250), BA(1800, 320), BA(2700, 300)],
-    pickups: [HE(1830, 358), CR(2650, 356), HE(3360, 358)],
-    signs: [], exit: 3900, boss: false,
-  },
-  { // 第 5 关：BOSS 战
-    name: '终焉 · 吞噬之巢', tip: '击败三阶段的「时空间吞噬者」！',
-    w: 1600, spawn: 80,
-    ground: [[0, 1600]],
-    plats: [[230, 386, 150], [1180, 386, 150], [640, 386, 320]],
-    walls: [[0, 0, 36, 470], [1564, 0, 36, 470]],
-    spikes: [], flames: [], crushers: [], seals: [],
-    enemies: [],
-    pickups: [HE(300, 358), HE(1300, 358), CR(720, 358), CR(880, 358)],
-    signs: [], exit: null, boss: true, bossSpawn: [1150, 240],
-  },
+  // 世界一 星语平原
+  ORIG_L1, W1_2, W1_3, W1_4, W1_5, ARENA_1,
+  // 世界二 时焰回廊
+  ORIG_L2, W2_2, W2_3, W2_4, W2_5, ARENA_2,
+  // 世界三 断崖之径
+  ORIG_L3, W3_2, W3_3, W3_4, W3_5, ARENA_3,
+  // 世界四 封印回廊
+  ORIG_L4, W4_2, W4_3, W4_4, W4_5, ARENA_4,
+  // 世界五 毒雾沼泽
+  W5_1, W5_2, W5_3, W5_4, W5_5, ARENA_5,
+  // 世界六 星陨之心（终局）
+  W6_1, W6_2, W6_3, W6_4, W6_5, ORIG_L5,
 ];
-const LEVEL_PALS = [ // 每关配色（天/山/地面/浮台）
+const LEVEL_PALS = [ // 世界配色（天/山/地面/浮台）：0平原 1时焰 2断崖 3封印 4星陨 5毒沼
   { sky0: '#0c1230', sky1: '#232a55', mount: '#141a3a', hill: '#1c2350', ground: '#2c3a2e', gtop: '#57a05a', plat: '#3c4a40', ptop: '#6fb96f' },
   { sky0: '#1a0e18', sky1: '#4a2430', mount: '#241420', hill: '#301a28', ground: '#3a2c30', gtop: '#a06050', plat: '#463238', ptop: '#c07858' },
   { sky0: '#0a1626', sky1: '#1d3a5a', mount: '#122438', hill: '#182e48', ground: '#28323e', gtop: '#5a8ab0', plat: '#38434f', ptop: '#7aa8cc' },
   { sky0: '#140a24', sky1: '#381a52', mount: '#1e1032', hill: '#2a1644', ground: '#2e2440', gtop: '#7a5ab0', plat: '#3c2e52', ptop: '#9a78d8' },
   { sky0: '#08040f', sky1: '#2c1038', mount: '#150a20', hill: '#1e0e2c', ground: '#241a34', gtop: '#6a4a9a', plat: '#302248', ptop: '#8a62c8' },
+  { sky0: '#0a140e', sky1: '#1e3a26', mount: '#10241a', hill: '#163020', ground: '#2a3428', gtop: '#6a9a4a', plat: '#38442f', ptop: '#8ab862' },
 ];
+/* ==== LEVEL-DATA-END ==== */
 
 /* ==================== 游戏状态 ==================== */
+/* 难度三档：普通档全部倍率为 1（与原版数值完全一致） */
+const DIFFS = {
+  easy:   { key: 'easy',   label: '简单', hpMul: 1.5, dmgMul: 0.6, healMul: 1.5, enemyRate: 0.85, bossHpMul: 0.75, desc: '生命更多 · 敌人更温柔 · 适合初玩' },
+  normal: { key: 'normal', label: '普通', hpMul: 1,   dmgMul: 1,   healMul: 1,   enemyRate: 1,    bossHpMul: 1,    desc: '标准冒险 · 原汁原味' },
+  hard:   { key: 'hard',   label: '困难', hpMul: 0.8, dmgMul: 1.4, healMul: 0.75,enemyRate: 1.15, bossHpMul: 1.35, desc: '敌人凶猛 · 伤害加深 · 挑战者专属' },
+};
 const G = {
   state: 'title', time: 0, runTime: 0, levelTime: 0, kills: 0, level: 0,
   camX: 0, shakeT: 0, shakeMag: 0, slowT: 0, slowCastX: 0, slowCastY: 0, slowRingT: 0,
   introT: 0, deathReason: '', newBest: false, clearStats: null, victoryT: 0, banner: null,
+  diff: 'normal', pendingStart: null,
 };
 let hero = null;                 // 当前英雄定义
 let P = null;                    // 玩家实例
@@ -728,11 +1146,36 @@ let solids = [], seals = [], spikes = [], flames = [], crushers = [];
 let enemies = [], projectiles = [], beams = [], pickups = [], signs = [], portal = null, boss = null;
 let particles = [], floats = [];
 let uiButtons = [];              // 每帧菜单按钮注册表
-let bestTime = null;
+let DIFF = DIFFS.normal;         // 当前难度参数
+let bestTime = null;             // 当前难度的最佳通关纪录
+let prog = { easy: 0, normal: 0, hard: 0 }; // 各难度已解锁到的关卡索引
 try {
-  const b = parseFloat(localStorage.getItem('heroSquadBest'));
-  if (isFinite(b) && b > 0) bestTime = b;
+  const p = JSON.parse(localStorage.getItem('heroSquadProg') || 'null');
+  if (p && typeof p === 'object') for (const k of ['easy', 'normal', 'hard']) if (Number.isInteger(p[k]) && p[k] >= 0 && p[k] < LEVELS.length) prog[k] = p[k];
 } catch (e) {}
+function loadBest() {
+  bestTime = null;
+  try {
+    let b = parseFloat(localStorage.getItem('heroSquadBest_' + G.diff));
+    if (!isFinite(b) && G.diff === 'normal') b = parseFloat(localStorage.getItem('heroSquadBest')); // 兼容旧版单键
+    if (isFinite(b) && b > 0) bestTime = b;
+  } catch (e) {}
+}
+function setDiff(k) {
+  if (!DIFFS[k]) return;
+  G.diff = k; DIFF = DIFFS[k];
+  try { localStorage.setItem('heroSquadDiff', k); } catch (e) {}
+  loadBest();
+}
+function unlockTo(i) { // 通关后解锁下一关（各难度分别记录）
+  const t = Math.min(i, LEVELS.length - 1);
+  if (t > prog[G.diff]) {
+    prog[G.diff] = t;
+    try { localStorage.setItem('heroSquadProg', JSON.stringify(prog)); } catch (e) {}
+  }
+}
+try { const d = localStorage.getItem('heroSquadDiff'); if (d && DIFFS[d]) { G.diff = d; DIFF = DIFFS[d]; } } catch (e) {}
+loadBest();
 
 function shake(mag, t) { G.shakeT = Math.max(G.shakeT, t || 0.25); G.shakeMag = Math.max(G.shakeMag, mag); }
 function addFloat(x, y, s, color, size) {
@@ -756,16 +1199,43 @@ function makePlayer() {
   return {
     x: L.spawn, y: GROUND_Y - 46, w: 24, h: 44, vx: 0, vy: 0,
     facing: 1, onGround: false, coyote: 0, jumpBuf: 0,
-    hp: hero.hp, maxHp: hero.hp, invuln: 1.0,
+    hp: Math.round(hero.hp * DIFF.hpMul), maxHp: Math.round(hero.hp * DIFF.hpMul), invuln: 1.0,
     atkCd: 0, swingT: 0, atkLock: 0, slowSelf: 0, chargeT: 0, chargeId: 0, walkT: 0,
     jumpMult: hero.jumpMult || 1,
     skills: {}, dashTrail: 0,
   };
 }
+const GROUND_ENEMY_TYPES = ['slime', 'skel', 'shroom', 'knight', 'spitter', 'sage'];
 function makeEnemy(d) {
-  if (d.type === 'slime') return { type: 'slime', x: d.x - 15, y: GROUND_Y - 24, w: 30, h: 24, vx: 0, vy: 0, dir: Math.random() < 0.5 ? 1 : -1, hp: 30, maxHp: 30, dmg: 15, flash: 0, ph: Math.random() * 9, onGround: true, hopCd: 1 + Math.random() };
-  if (d.type === 'skel')  return { type: 'skel', x: d.x - 12, y: GROUND_Y - 42, w: 24, h: 42, vx: 0, vy: 0, dir: -1, hp: 40, maxHp: 40, dmg: 12, flash: 0, ph: Math.random() * 9, shootCd: 1.4 + Math.random(), windup: 0, onGround: true };
-  return { type: 'bat', x: d.x - 13, y: d.y, w: 26, h: 18, hp: 20, maxHp: 20, dmg: 10, flash: 0, ph: Math.random() * 9, x0: d.x, y0: d.y };
+  let e;
+  if (d.type === 'slime')
+    e = { type: 'slime', x: d.x - 15, y: GROUND_Y - 24, w: 30, h: 24, vx: 0, vy: 0, dir: Math.random() < 0.5 ? 1 : -1, hp: 30, maxHp: 30, dmg: 15, flash: 0, ph: Math.random() * 9, onGround: true, hopCd: 1 + Math.random() };
+  else if (d.type === 'skel')
+    e = { type: 'skel', x: d.x - 12, y: GROUND_Y - 42, w: 24, h: 42, vx: 0, vy: 0, dir: -1, hp: 40, maxHp: 40, dmg: 12, flash: 0, ph: Math.random() * 9, shootCd: 1.4 + Math.random(), windup: 0, onGround: true };
+  else if (d.type === 'shroom') // 毒蘑菇：慢速巡逻 + 周期抛毒孢子
+    e = { type: 'shroom', x: d.x - 14, y: GROUND_Y - 26, w: 28, h: 26, vx: 0, vy: 0, dir: -1, hp: 35, maxHp: 35, dmg: 12, flash: 0, ph: Math.random() * 9, onGround: true, sporeCd: 1.6 + Math.random(), puff: 0 };
+  else if (d.type === 'knight') // 铁甲卫士：正面格挡 + 盾击冲刺（转向有迟滞，可跳跃绕背）
+    e = { type: 'knight', x: d.x - 15, y: GROUND_Y - 40, w: 30, h: 40, vx: 0, vy: 0, dir: -1, hp: 70, maxHp: 70, dmg: 16, flash: 0, ph: Math.random() * 9, onGround: true, dashCd: 2 + Math.random(), windup: 0, dashT: 0, blockFlash: 0, faceHold: 0 };
+  else if (d.type === 'spitter') // 食人花：扎根 + 三向喷籽
+    e = { type: 'spitter', x: d.x - 15, y: GROUND_Y - 34, w: 30, h: 34, vx: 0, vy: 0, dir: -1, hp: 45, maxHp: 45, dmg: 14, flash: 0, ph: Math.random() * 9, spitCd: 1.2 + Math.random(), spitAnim: 0 };
+  else if (d.type === 'sage') // 暗影术士：瞬移近身 + 慢速弹幕
+    e = { type: 'sage', x: d.x - 12, y: GROUND_Y - 42, w: 24, h: 42, vx: 0, vy: 0, dir: -1, hp: 40, maxHp: 40, dmg: 12, flash: 0, ph: Math.random() * 9, tpCd: 2 + Math.random(), castT: 0 };
+  else if (d.type === 'bomber') // 爆弹蝠：悬停头顶投弹
+    e = { type: 'bomber', x: d.x - 15, y: d.y, w: 30, h: 22, vx: 0, vy: 0, dir: -1, hp: 28, maxHp: 28, dmg: 12, flash: 0, ph: Math.random() * 9, y0: d.y, bombCd: 1.5 + Math.random() };
+  else if (d.type === 'ghost') // 幽灵：无视地形缓慢追踪
+    e = { type: 'ghost', x: d.x - 13, y: d.y, w: 26, h: 30, vx: 0, vy: 0, dir: 1, hp: 25, maxHp: 25, dmg: 14, flash: 0, ph: Math.random() * 9, x0: d.x, y0: d.y };
+  else
+    e = { type: 'bat', x: d.x - 13, y: d.y, w: 26, h: 18, hp: 20, maxHp: 20, dmg: 10, flash: 0, ph: Math.random() * 9, x0: d.x, y0: d.y };
+  if (d.elite) { // 精英变体：体型 ×1.25、血量 ×4、伤害 ×1.4
+    const s = 1.25;
+    e.w = Math.round(e.w * s); e.h = Math.round(e.h * s);
+    e.x = d.x - e.w / 2;
+    if (GROUND_ENEMY_TYPES.includes(e.type)) e.y = GROUND_Y - e.h;
+    e.hp = e.maxHp = Math.round(e.maxHp * 4);
+    e.dmg = Math.round(e.dmg * 1.4);
+    e.elite = true;
+  }
+  return e;
 }
 function buildLevel(i) {
   const L = LEVELS[i];
@@ -790,9 +1260,9 @@ function buildLevel(i) {
   G.introT = 1.7;
   G.banner = { title: L.name, sub: L.tip, life: 2.4, max: 2.4 };
 }
-function startRun() {
+function startRun(idx) { // idx 缺省 = 从当前难度已解锁进度继续
   G.runTime = 0; G.kills = 0; G.newBest = false;
-  buildLevel(0);
+  buildLevel(idx == null ? prog[G.diff] : idx);
   G.state = 'intro';
 }
 function nextLevel() {
@@ -838,6 +1308,10 @@ function rectHitsSeal(x, y, w, h) {
   for (const s of seals) if (x < s.x + s.w && x + w > s.x && y < s.y + s.h && y + h > s.y) return true;
   return false;
 }
+function groundTopAt(x) { // x 处是否有地面段（返回地面顶 y 或 null）
+  for (const s of solids) if (s.type === 'ground' && x >= s.x && x <= s.x + s.w) return s.y;
+  return null;
+}
 function segPointDist(x0, y0, x1, y1, px, py) {
   const dx = x1 - x0, dy = y1 - y0;
   const L2 = dx * dx + dy * dy || 1;
@@ -849,25 +1323,34 @@ function segPointDist(x0, y0, x1, y1, px, py) {
 function eslow(isBoss) { return G.slowT > 0 ? (isBoss ? 0.7 : 0.35) : 1; }
 
 /* ==================== 战斗与伤害 ==================== */
+const DEATH_COLORS = { slime: '#7fe07a', bat: '#c08aff', skel: '#e8e8e8', shroom: '#e0b04a', ghost: '#a8d8ff', knight: '#9aa8c8', bomber: '#ff8a6a', spitter: '#8ae07a', sage: '#b28cff' };
 function dealDamage(e, dmg, kbDir, isBoss) {
   if (e.dead) return;
   if (isBoss && e.dying) return;
+  let blocked = false;
+  if (e.type === 'knight' && kbDir && kbDir === -e.dir) { // 正面格挡：攻击方向与盾面相对（卫士永远面向玩家）
+    dmg = Math.max(1, Math.round(dmg * 0.25));
+    blocked = true;
+    e.blockFlash = 0.2;
+  }
   e.hp -= dmg; e.flash = 0.14;
   const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
-  addFloat(cx, e.y - 10, '-' + dmg, isBoss ? '#ffd166' : '#fff', 14);
-  burst(cx, cy, '#ffd166', 6, 120);
+  if (blocked) addFloat(cx, e.y - 10, '格挡 -' + dmg, '#9fb6d8', 13);
+  else addFloat(cx, e.y - 10, '-' + dmg, isBoss ? '#ffd166' : '#fff', 14);
+  burst(cx, cy, blocked ? '#9fb6d8' : '#ffd166', 6, 120);
   sfx.hit();
-  if (kbDir && (e.type === 'slime' || e.type === 'skel')) e.vx = kbDir * 200;
+  if (kbDir && (e.type === 'slime' || e.type === 'skel' || e.type === 'shroom')) e.vx = kbDir * 200;
   if (e.hp <= 0) {
     if (isBoss) { bossDie(); return; }
     e.dead = true;
     G.kills++;
-    burst(cx, cy, e.type === 'slime' ? '#7fe07a' : e.type === 'bat' ? '#c08aff' : '#e8e8e8', 16, 190);
+    burst(cx, cy, DEATH_COLORS[e.type] || '#e8e8e8', 16, 190);
     burst(cx, cy, '#fff', 8, 120);
   }
 }
 function damagePlayer(dmg, reason) {
   if (!P || P.hp <= 0 || P.invuln > 0) return;
+  dmg = Math.max(1, Math.round(dmg * DIFF.dmgMul)); // 难度缩放：所有来源的伤害在此统一乘
   P.hp -= dmg;
   P.invuln = 0.8;
   shake(6, 0.3);
@@ -1034,11 +1517,13 @@ function useSuperJump() {
 /* ==================== 敌人 ==================== */
 function updateEnemies(dt) {
   const p = P;
+  const CONTACT_REASONS = { slime: '被史莱姆撞飞', bat: '被蝙蝠撞到', skel: '撞上了骷髅', shroom: '撞上了毒蘑菇', ghost: '被幽灵缠住', knight: '撞上了铁甲卫士', bomber: '撞上了爆弹蝠', spitter: '撞上了食人花', sage: '撞上了暗影术士' };
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     if (e.dead) { enemies.splice(i, 1); continue; }
+    if (e.y > H + 260) { enemies.splice(i, 1); continue; } // 追击中跌落深渊的敌人直接移除
     if (e.flash > 0) e.flash -= dt;
-    const edt = dt * eslow(false);
+    const edt = dt * eslow(false) * DIFF.enemyRate; // 难度同时改变敌人的行动/施法节奏
     e.ph += edt;
     const pcx = p.x + p.w / 2, pcy = p.y + p.h / 2;
     const ecx = e.x + e.w / 2, ecy = e.y + e.h / 2;
@@ -1069,6 +1554,107 @@ function updateEnemies(dt) {
         e.shootCd -= edt;
         if (e.shootCd <= 0 && Math.abs(pcx - ecx) < 460) { e.windup = 0.45; e.shootCd = 2.3 + Math.random() * 0.7; }
       }
+    } else if (e.type === 'shroom') {
+      e.hitWall = false;
+      const near = Math.abs(pcx - ecx) < 250 && Math.abs(pcy - ecy) < 130;
+      if (near) e.dir = pcx > ecx ? 1 : -1;
+      if (e.onGround) {
+        e.vx = e.dir * 26;
+        if (!edgeAhead(e, e.dir) || e.hitWall) { if (!near) e.dir *= -1; else e.vx = 0; }
+      }
+      e.vy = Math.min(MAXFALL, e.vy + GRAV * edt);
+      moveBody(e, edt);
+      if (e.hitWall) e.dir *= -1;
+      if (e.puff > 0) e.puff -= dt;
+      e.sporeCd -= edt;
+      if (near && e.sporeCd <= 0) {
+        e.sporeCd = 2.6 + Math.random() * 0.8;
+        e.puff = 0.4;
+        for (let k = -1; k <= 1; k++)
+          projectiles.push({ type: 'spore', x: ecx, y: e.y + 4, vx: k * 85 + (pcx > ecx ? 40 : -40), vy: -300, grav: 620, r: 5, dmg: 10, life: 3, from: 'enemy' });
+        sfx.magic();
+      }
+    } else if (e.type === 'knight') {
+      if (e.blockFlash > 0) e.blockFlash -= dt;
+      const dx = pcx - ecx;
+      // 转向迟滞 0.5s；举盾/冲刺期间完全锁向——跳跃越过即可背刺
+      if (e.windup <= 0 && e.dashT <= 0 && e.faceHold <= 0) {
+        const want = dx > 0 ? 1 : -1;
+        if (want !== e.dir) e.faceHold = 0.5;
+        e.dir = want;
+      }
+      e.faceHold = Math.max(0, e.faceHold - edt);
+      if (e.windup > 0) {          // 举盾前摇
+        e.windup -= edt;
+        e.vx = 0;
+        if (e.windup <= 0) { e.dashT = 0.42; sfx.dash(); }
+      } else if (e.dashT > 0) {    // 盾击冲刺
+        e.dashT -= edt;
+        e.vx = e.dir * 340;
+        if (e.dashT <= 0) e.faceHold = 0.45; // 冲刺惯性：短暂背对玩家 = 背刺窗口
+      } else {                     // 缓步逼近
+        e.vx = e.dir * (Math.abs(dx) < 460 ? 46 : 20);
+        e.dashCd -= edt;
+        if (e.dashCd <= 0 && Math.abs(dx) < 300 && Math.abs(pcy - ecy) < 90) { e.windup = 0.55; e.dashCd = 3.4; }
+      }
+      e.vy = Math.min(MAXFALL, e.vy + GRAV * edt);
+      moveBody(e, edt);
+    } else if (e.type === 'spitter') {
+      e.dir = pcx > ecx ? 1 : -1;
+      if (e.spitAnim > 0) e.spitAnim -= dt;
+      e.spitCd -= edt;
+      if (e.spitCd <= 0 && Math.abs(pcx - ecx) < 400 && Math.abs(pcy - ecy) < 230) {
+        e.spitCd = 2.4 + Math.random() * 0.8;
+        e.spitAnim = 0.4;
+        for (let k = -1; k <= 1; k++)
+          projectiles.push({ type: 'seed', x: ecx + e.dir * 10, y: e.y + 8, vx: e.dir * (250 + k * 55), vy: -170 - k * 10, grav: 640, r: 5, dmg: 10, life: 3.4, from: 'enemy' });
+        sfx.magic();
+      }
+    } else if (e.type === 'sage') {
+      e.dir = pcx > ecx ? 1 : -1;
+      if (e.castT > 0) {           // 施法前摇结束放出弹幕
+        e.castT -= edt;
+        if (e.castT <= 0) {
+          const a = Math.atan2(pcy - 10 - (ecy - 16), pcx - ecx);
+          projectiles.push({ type: 'orb', x: ecx + e.dir * 12, y: ecy - 16, vx: Math.cos(a) * 235, vy: Math.sin(a) * 235, r: 7, dmg: 12, life: 4, from: 'enemy' });
+          sfx.shoot();
+        }
+      } else {
+        e.tpCd -= edt;
+        if (e.tpCd <= 0 && Math.abs(pcx - ecx) < 560) { // 瞬移到玩家侧后方
+          e.tpCd = 3.4 + Math.random() * 1.2;
+          const nx = clamp(pcx + (Math.random() < 0.5 ? -1 : 1) * (160 + Math.random() * 90), 60, LEVELS[G.level].w - 80);
+          const gy = groundTopAt(nx);
+          if (gy != null) {
+            burst(ecx, ecy, '#8a5fd0', 10, 130, 0);
+            e.x = nx - e.w / 2; e.y = gy - e.h;
+            burst(nx, e.y + e.h / 2, '#c8a2ff', 12, 150, 0);
+            sfx.blink();
+          }
+          e.castT = 0.55;
+        }
+      }
+    } else if (e.type === 'bomber') {
+      const tx = pcx, ty = clamp(pcy - 190, 90, 300);
+      e.x += clamp(tx - ecx, -95, 95) * edt;
+      e.y += clamp(ty - ecy, -70, 70) * edt + Math.sin(e.ph * 2.2) * 14 * edt;
+      e.y = clamp(e.y, 40, 340);
+      e.bombCd -= edt;
+      if (e.bombCd <= 0 && Math.abs(pcx - ecx) < 130 && pcy > ecy) {
+        e.bombCd = 2.6 + Math.random() * 0.9;
+        projectiles.push({ type: 'bomb', x: ecx, y: e.y + e.h, vx: 0, vy: 40, grav: 780, r: 7, dmg: 16, life: 5, from: 'enemy' });
+        sfx.shoot();
+      }
+    } else if (e.type === 'ghost') {
+      const d2 = Math.max(1, dist(pcx, pcy, ecx, ecy));
+      if (d2 < 430) {              // 穿墙直追
+        e.x += (pcx - ecx) / d2 * 52 * edt;
+        e.y += (pcy - ecy) / d2 * 46 * edt;
+      } else {                     // 远离时回巢游荡
+        e.x += clamp(e.x0 - ecx, -40, 40) * edt;
+        e.y = e.y0 + Math.sin(e.ph * 1.1) * 34;
+      }
+      e.y = clamp(e.y, 36, GROUND_Y - e.h - 4);
     } else { // bat
       const near = dist(pcx, pcy, ecx, ecy) < 260;
       if (near) {
@@ -1083,16 +1669,19 @@ function updateEnemies(dt) {
     }
     // 接触伤害
     if (overlap(e, P) && P.hp > 0) {
-      damagePlayer(e.dmg, e.type === 'slime' ? '被史莱姆撞飞' : e.type === 'bat' ? '被蝙蝠撞到' : '撞上了骷髅');
-      if (e.type !== 'bat') { P.vx = (pcx > ecx ? 1 : -1) * 240; P.vy = -220; }
+      damagePlayer(e.dmg, CONTACT_REASONS[e.type] || '被怪物撞到');
+      if (e.type !== 'bat' && e.type !== 'ghost' && e.type !== 'bomber') { P.vx = (pcx > ecx ? 1 : -1) * 240; P.vy = -220; }
     }
   }
 }
 
 /* ==================== BOSS：时空间吞噬者 ==================== */
 function makeBoss(x, y) {
+  const L = LEVELS[G.level];
+  const hp = Math.round(600 * (L.bossHp || 1) * DIFF.bossHpMul); // 分档血量 × 难度倍率
   return {
-    x: x - 55, y, w: 110, h: 110, hp: 600, maxHp: 600,
+    x: x - 55, y, w: 110, h: 110, hp, maxHp: hp,
+    name: L.bossName || '时空间吞噬者', tint: L.bossTint || BOSS_TINTS.chrono, rate: L.bossRate || 1,
     phase: 1, state: 'hover', t: 0, atkCd: 2.0,
     vx: 0, vy: 0, dir: -1, ph: 0,
     dashTX: 0, dashTY: 0, dashHit: false,
@@ -1121,21 +1710,28 @@ function updateBoss(dt) {
       const c = bossCenter();
       burst(c.x, c.y, '#fff', 40, 320);
       boss = null;
-      G.victoryT = 1.1;
       sfx.win();
+      if (G.level >= LEVELS.length - 1) {          // 最终关：通关结算
+        G.victoryT = 1.1;
+      } else {                                      // 世界末 BOSS：按过关结算并解锁下一关
+        G.clearStats = { time: G.levelTime, kills: G.kills, hp: P ? Math.round(P.hp) : 0 };
+        unlockTo(G.level + 1);
+        G.state = 'clear';
+      }
     }
     return;
   }
   if (b.flash > 0) b.flash -= dt;
-  const edt = dt * eslow(true);
+  const edt = dt * eslow(true) * (b.rate || 1);
   b.ph += edt;
   b.t += edt;
   const p = P;
   const pcx = p.x + p.w / 2, pcy = p.y + p.h / 2;
   const c = bossCenter();
-  // 阶段切换
-  if (b.phase === 1 && b.hp <= 400) { b.phase = 2; transitionBurst(); }
-  if (b.phase === 2 && b.hp <= 200) { b.phase = 3; transitionBurst(); }
+  // 阶段切换（按最大血量比例，适配各世界分档血量）
+  const th2 = b.maxHp * 0.667, th3 = b.maxHp * 0.333;
+  if (b.phase === 1 && b.hp <= th2) { b.phase = 2; transitionBurst(); }
+  if (b.phase === 2 && b.hp <= th3) { b.phase = 3; transitionBurst(); }
 
   if (b.state === 'hover') {
     b.atkCd -= edt;
@@ -1299,10 +1895,18 @@ function updateHazards(dt) {
 }
 
 /* ==================== 投射物 ==================== */
+const PROJ_REASONS = { arrow: '被骷髅箭射中', orb: '被弹幕击中', spore: '被毒孢子击中', seed: '被食人花籽击中', bomb: '被爆弹炸到' };
+function explodeBomb(b) { // 炸弹落地/命中：范围爆炸
+  burst(b.x, b.y, '#ff8a3a', 16, 210);
+  burst(b.x, b.y, '#ffd97a', 9, 150);
+  shake(5, 0.25);
+  sfx.slam();
+  if (P && P.hp > 0 && dist(P.x + P.w / 2, P.y + P.h / 2, b.x, b.y) < 76) damagePlayer(b.dmg, '被爆弹炸到');
+}
 function updateProjectiles(dt) {
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const b = projectiles[i];
-    const slow = b.from === 'player' ? 1 : eslow(b.from === 'boss');
+    const slow = b.from === 'player' ? 1 : eslow(b.from === 'boss') * DIFF.enemyRate;
     b.life -= dt;
     // 追踪（玩家小魔法弹）
     if (b.type === 'magic') {
@@ -1327,14 +1931,17 @@ function updateProjectiles(dt) {
     }
     b.x += b.vx * dt * slow;
     b.y += b.vy * dt * slow;
+    if (b.grav) b.vy += b.grav * dt * slow; // 带重力的弹种（毒孢子/花籽/炸弹）走抛物线
     let gone = b.life <= 0 || b.x < G.camX - 80 || b.x > G.camX + W + 80 || b.y > H + 60 || b.y < -80;
     if (!gone && rectHitsSolid(b.x - b.r * 0.6, b.y - b.r * 0.6, b.r * 1.2, b.r * 1.2)) {
-      burst(b.x, b.y, b.type === 'arrow' ? '#d8cfc0' : '#c8a2ff', 5, 90);
+      if (b.type === 'bomb') explodeBomb(b);
+      else burst(b.x, b.y, b.type === 'arrow' ? '#d8cfc0' : '#c8a2ff', 5, 90);
       gone = true;
     }
     if (!gone && b.from !== 'player' && P.hp > 0) {
       if (Math.abs(b.x - (P.x + P.w / 2)) < P.w / 2 + b.r && Math.abs(b.y - (P.y + P.h / 2)) < P.h / 2 + b.r) {
-        damagePlayer(b.dmg, b.type === 'arrow' ? '被骷髅箭射中' : '被弹幕击中');
+        if (b.type === 'bomb') explodeBomb(b);
+        else damagePlayer(b.dmg, PROJ_REASONS[b.type] || '被弹幕击中');
         gone = true;
       }
     }
@@ -1364,8 +1971,9 @@ function updatePickups(dt) {
     if (overlap(pk, P) && P.hp > 0) {
       if (pk.type === 'heart') {
         if (P.hp >= P.maxHp) continue;
-        P.hp = Math.min(P.maxHp, P.hp + 20);
-        addFloat(pk.x + 12, pk.y, '+20 生命', '#7ce86a', 15);
+        const heal = Math.round(20 * DIFF.healMul);
+        P.hp = Math.min(P.maxHp, P.hp + heal);
+        addFloat(pk.x + 12, pk.y, '+' + heal + ' 生命', '#7ce86a', 15);
         burst(pk.x + 12, pk.y + 12, '#ff7a9a', 12, 140);
         sfx.heart();
         pk.taken = true;
@@ -1394,6 +2002,7 @@ function checkPortal() {
     burst(portal.x, GROUND_Y - 60, '#8affd0', 30, 220, 0);
     sfx.portal();
     G.clearStats = { time: G.levelTime, kills: G.kills, hp: Math.round(P.hp) };
+    unlockTo(G.level + 1); // 记录进度：下一关解锁
     G.state = 'clear';
   }
 }
@@ -1501,14 +2110,14 @@ function update(dt) {
     if (G.victoryT <= 0) {
       G.state = 'victory';
       G.newBest = bestTime == null || G.runTime < bestTime;
-      if (G.newBest) { bestTime = G.runTime; try { localStorage.setItem('heroSquadBest', String(bestTime)); } catch (e) {} }
+      if (G.newBest) { bestTime = G.runTime; try { localStorage.setItem('heroSquadBest_' + G.diff, String(bestTime)); } catch (e) {} }
     }
   }
 }
 
 /* ==================== 渲染：背景（星空/远山/云 视差） ==================== */
 function drawBackground() {
-  const pal = LEVEL_PALS[G.level];
+  const pal = LEVEL_PALS[LEVELS[G.level].pal];
   const cam = G.camX;
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, pal.sky0); g.addColorStop(1, pal.sky1);
@@ -1560,7 +2169,7 @@ function drawMountains(par, color, scaleH) {
 
 /* ==================== 渲染：关卡实体 ==================== */
 function drawWorld() {
-  const pal = LEVEL_PALS[G.level];
+  const pal = LEVEL_PALS[LEVELS[G.level].pal];
   ctx.save();
   // 屏幕震动
   let sx = 0, sy = 0;
@@ -1746,6 +2355,29 @@ function drawWorld() {
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.beginPath(); ctx.arc(b.x - 1.6, b.y - 1.6, b.r * 0.4, 0, Math.PI * 2); ctx.fill();
+    } else if (b.type === 'spore') { // 毒孢子
+      ctx.fillStyle = 'rgba(154,232,122,0.35)';
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 3.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8ae05a';
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d8ffc0';
+      ctx.beginPath(); ctx.arc(b.x - 1.4, b.y - 1.4, b.r * 0.4, 0, Math.PI * 2); ctx.fill();
+    } else if (b.type === 'seed') { // 食人花籽
+      ctx.save();
+      ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy, b.vx));
+      ctx.fillStyle = '#7a5a30';
+      ctx.beginPath(); ctx.ellipse(0, 0, b.r + 1.4, b.r * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#b09050';
+      ctx.beginPath(); ctx.arc(b.r * 0.4, 0, b.r * 0.34, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    } else if (b.type === 'bomb') { // 炸弹
+      ctx.fillStyle = '#22242c';
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.beginPath(); ctx.arc(b.x - b.r * 0.34, b.y - b.r * 0.34, b.r * 0.36, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#c8a05a'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(b.x + 1, b.y - b.r); ctx.quadraticCurveTo(b.x + 3, b.y - b.r - 3, b.x + 5, b.y - b.r - 4); ctx.stroke();
+      star(b.x + 5, b.y - b.r - 4, 2.2, G.time * 9, '#ffd97a');
     } else { // 魔法弹
       ctx.fillStyle = 'rgba(178,140,255,0.4)';
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 3.4, 0, Math.PI * 2); ctx.fill();
@@ -1909,6 +2541,126 @@ function drawEnemy(e) {
       ctx.fillStyle = '#ffd166';
       ctx.fillRect(10 - pull - 6, -21.4, 12, 2.6);
     }
+  } else if (e.type === 'shroom') { // 毒蘑菇
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(cx, e.y + e.h + 2, e.w / 2, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8dcc0';                                   // 茎
+    ctx.fillRect(cx - 7, e.y + e.h - 14, 14, 14);
+    const sq = 1 + Math.sin(e.ph * 3) * 0.05 + (e.puff > 0 ? 0.15 : 0);
+    const capG = ctx.createRadialGradient(cx - 4, e.y + 6, 2, cx, e.y + 10, 20);
+    capG.addColorStop(0, '#f0a04a'); capG.addColorStop(1, '#b45a20');
+    ctx.fillStyle = capG;                                        // 伞盖
+    ctx.beginPath(); ctx.ellipse(cx, e.y + 10, (e.w / 2 + 2) / sq, 12 * sq, 0, Math.PI, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffe0b0';                                   // 斑点
+    ctx.beginPath(); ctx.arc(cx - 7, e.y + 5, 2.4, 0, Math.PI * 2); ctx.arc(cx + 6, e.y + 7, 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#26202a';                                   // 眼
+    ctx.fillRect(cx - 5, e.y + e.h - 9, 2.6, 3.4); ctx.fillRect(cx + 2.4, e.y + e.h - 9, 2.6, 3.4);
+    if (e.puff > 0) {
+      ctx.fillStyle = rgba('#9ae87a', 0.5);
+      ctx.beginPath(); ctx.arc(cx, e.y + 4, 6 + Math.sin(G.time * 30) * 2, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (e.type === 'ghost') { // 幽灵（半透明飘浮）
+    ctx.translate(cx, cy + Math.sin(e.ph * 2) * 3);
+    ctx.globalAlpha = 0.62;
+    const gg = ctx.createLinearGradient(0, -e.h / 2, 0, e.h / 2);
+    gg.addColorStop(0, '#cfe4ff'); gg.addColorStop(1, '#7a9cc8');
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.moveTo(-e.w / 2, e.h / 2 - 4);
+    ctx.quadraticCurveTo(-e.w / 2, -e.h / 2, 0, -e.h / 2);
+    ctx.quadraticCurveTo(e.w / 2, -e.h / 2, e.w / 2, e.h / 2 - 4);
+    for (let k = 2; k >= -2; k--) ctx.quadraticCurveTo(k * e.w / 5 + e.w / 10, e.h / 2 + (k % 2 ? -3 : 5) + Math.sin(e.ph * 6 + k) * 2, k * e.w / 5, e.h / 2 - 4);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = '#20304a';
+    ctx.fillRect(-6, -4, 4, 6); ctx.fillRect(2, -4, 4, 6);
+    ctx.fillStyle = rgba('#ffffff', 0.8);
+    ctx.beginPath(); ctx.arc(-4, -3, 1.2, 0, Math.PI * 2); ctx.arc(4, -3, 1.2, 0, Math.PI * 2); ctx.fill();
+  } else if (e.type === 'knight') { // 铁甲卫士
+    const bob = Math.sin(e.ph * 3) * 1.2;
+    ctx.translate(cx, e.y + bob);
+    ctx.scale(e.dir, 1);
+    ctx.rotate(e.dashT > 0 ? 0.18 : (e.windup > 0 ? -0.08 : 0));
+    ctx.fillStyle = '#3a3f4e';                                   // 腿
+    ctx.fillRect(-8, -12, 6, 12); ctx.fillRect(2, -12, 6, 12);
+    const kg = ctx.createLinearGradient(0, -34, 0, -12);         // 身甲
+    kg.addColorStop(0, '#8a94a8'); kg.addColorStop(1, '#5a6478');
+    ctx.fillStyle = kg; rr(-9, -34, 18, 23, 4); ctx.fill();
+    ctx.fillStyle = '#404a5e'; ctx.fillRect(-9, -16, 18, 4);
+    ctx.fillStyle = '#9aa8bc'; rr(-7, -48, 14, 14, 5); ctx.fill(); // 头盔
+    ctx.fillStyle = '#1a2030'; ctx.fillRect(-4, -42, 8, 3.4);   // 目缝
+    ctx.fillStyle = '#c8d4e4'; ctx.fillRect(1, -48, 4, 4);      // 盾徽
+    const shUp = e.windup > 0 ? 2 : 0;                           // 巨盾（面向侧）
+    ctx.fillStyle = e.blockFlash > 0 ? '#ffd97a' : '#6a7488';
+    rr(8, -40 + shUp, 8, 30, 3); ctx.fill();
+    ctx.strokeStyle = '#3a4254'; ctx.lineWidth = 1.6;
+    ctx.strokeRect(8.6, -39 + shUp, 6.8, 28);
+    ctx.fillStyle = '#c8d4e4'; ctx.fillRect(10.4, -28 + shUp, 3.2, 6);
+    if (e.dashT > 0) { ctx.globalAlpha = 0.3; ctx.fillStyle = '#9aa8c8'; ctx.fillRect(-22, -46, 10, 42); ctx.globalAlpha = 1; }
+  } else if (e.type === 'bomber') { // 爆弹蝠
+    const flap = Math.sin(e.ph * 11) * 8;
+    ctx.translate(cx, cy + Math.sin(e.ph * 2) * 3);
+    ctx.fillStyle = '#8a3a3a';                                   // 双翼
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.quadraticCurveTo(-20, -flap - 4, -26, flap * 0.4); ctx.quadraticCurveTo(-15, 4, -6, 4); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(6, 0); ctx.quadraticCurveTo(20, -flap - 4, 26, flap * 0.4); ctx.quadraticCurveTo(15, 4, 6, 4); ctx.closePath(); ctx.fill();
+    const bg = ctx.createRadialGradient(-3, -3, 2, 0, 0, 13);    // 圆胖身体
+    bg.addColorStop(0, '#d86a5a'); bg.addColorStop(1, '#a03a34');
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.ellipse(0, 0, 11, 10, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#22242c';                                   // 怀里的炸弹
+    ctx.beginPath(); ctx.arc(0, 9, 5.4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#c8a05a'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(1, 4); ctx.quadraticCurveTo(3, 1, 5.4, 0.6); ctx.stroke();
+    if (e.bombCd < 0.5) star(5.4, 0.2, 2 + Math.sin(G.time * 20), G.time * 8, '#ffd97a');
+    ctx.fillStyle = '#ffe8d0';                                   // 眼
+    ctx.fillRect(-5, -5, 3.4, 3.4); ctx.fillRect(1.6, -5, 3.4, 3.4);
+    ctx.fillStyle = '#201018';
+    ctx.fillRect(-3.9, -4.2, 1.8, 2); ctx.fillRect(2.7, -4.2, 1.8, 2);
+  } else if (e.type === 'spitter') { // 食人花
+    const chew = e.spitAnim > 0 ? Math.sin(G.time * 26) * 3 : 0;
+    ctx.strokeStyle = '#3f7a34'; ctx.lineWidth = 5; ctx.lineCap = 'round'; // 茎
+    ctx.beginPath(); ctx.moveTo(cx, GROUND_Y); ctx.quadraticCurveTo(cx - 6, e.y + 22, cx, e.y + 16); ctx.stroke();
+    ctx.fillStyle = '#4a9a3e';                                   // 叶
+    ctx.beginPath(); ctx.ellipse(cx - 11, e.y + 26, 8, 3.4, -0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + 11, e.y + 29, 8, 3.4, 0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c04a6a';                                   // 花瓣
+    for (let k = 0; k < 6; k++) {
+      const a = k * Math.PI / 3 - Math.PI / 2;
+      ctx.beginPath(); ctx.ellipse(cx + Math.cos(a) * 10, e.y + 12 + Math.sin(a) * 10, 7, 4.4, a, 0, Math.PI * 2); ctx.fill();
+    }
+    const open = 8 + chew + Math.sin(e.ph * 1.6) * 1.4;          // 花心大口
+    ctx.fillStyle = '#8a2a48';
+    ctx.beginPath(); ctx.arc(cx, e.y + 12, open, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f0e0d8';                                   // 牙
+    for (let k = 0; k < 6; k++) {
+      const a = k * Math.PI / 3;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * open * 0.8, e.y + 12 + Math.sin(a) * open * 0.8);
+      ctx.lineTo(cx + Math.cos(a + 0.35) * open * 0.55, e.y + 12 + Math.sin(a + 0.35) * open * 0.55);
+      ctx.closePath(); ctx.fill();
+    }
+  } else if (e.type === 'sage') { // 暗影术士
+    const bob = Math.sin(e.ph * 1.8) * 1.6;
+    ctx.translate(cx, e.y + bob);
+    ctx.scale(e.dir >= 0 ? 1 : -1, 1);
+    const rg = ctx.createLinearGradient(0, -40, 0, 0);           // 长袍
+    rg.addColorStop(0, '#4a3a72'); rg.addColorStop(1, '#241a3e');
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.moveTo(-10, 0); ctx.quadraticCurveTo(-12, -26, -7, -36);
+    ctx.lineTo(7, -36); ctx.quadraticCurveTo(12, -26, 10, 0);
+    ctx.quadraticCurveTo(0, -4, -10, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#5c4a8a';                                   // 兜帽
+    ctx.beginPath(); ctx.arc(0, -36, 8.4, Math.PI, 0); ctx.lineTo(8.4, -30); ctx.lineTo(-8.4, -30); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = e.castT > 0 ? '#e0b0ff' : '#8a5fd0';         // 帽中幽光
+    ctx.beginPath(); ctx.arc(0, -32, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 2.4;            // 法杖
+    ctx.beginPath(); ctx.moveTo(9, -6); ctx.lineTo(13, -40); ctx.stroke();
+    const glow = e.castT > 0 ? 4.4 + Math.sin(G.time * 24) * 1.4 : 2.6;
+    ctx.fillStyle = '#c8a2ff';
+    ctx.beginPath(); ctx.arc(13, -42, glow, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f0e0ff';
+    ctx.beginPath(); ctx.arc(13, -42, glow * 0.4, 0, Math.PI * 2); ctx.fill();
   } else { // bat
     const flap = Math.sin(e.ph * 13) * 10;
     ctx.translate(cx, cy);
@@ -1926,6 +2678,17 @@ function drawEnemy(e) {
     ctx.fillRect(-3.4, -2.6, 2.4, 2.4); ctx.fillRect(1, -2.6, 2.4, 2.4);
   }
   ctx.restore();
+  // 精英王冠
+  if (e.elite) {
+    const cxm = e.x + e.w / 2, cy2 = e.y - 12;
+    ctx.fillStyle = '#ffd97a';
+    ctx.beginPath();
+    ctx.moveTo(cxm - 8, cy2);
+    ctx.lineTo(cxm - 8, cy2 - 6); ctx.lineTo(cxm - 4, cy2 - 2.4);
+    ctx.lineTo(cxm, cy2 - 7); ctx.lineTo(cxm + 4, cy2 - 2.4);
+    ctx.lineTo(cxm + 8, cy2 - 6); ctx.lineTo(cxm + 8, cy2);
+    ctx.closePath(); ctx.fill();
+  }
   // 受击闪白
   if (e.flash > 0) {
     ctx.fillStyle = rgba('#ffffff', 0.55);
@@ -1944,8 +2707,9 @@ function drawBoss() {
   const t = G.time;
   ctx.save();
   // 底光
+  const T = boss.tint || BOSS_TINTS.chrono;
   const bg = ctx.createRadialGradient(c.x, c.y, 20, c.x, c.y, 130);
-  const glowC = boss.phase === 3 ? '#ff5a5a' : '#8a5fd0';
+  const glowC = boss.phase === 3 ? T.rage : T.glow;
   bg.addColorStop(0, rgba(glowC, 0.22)); bg.addColorStop(1, rgba(glowC, 0));
   ctx.fillStyle = bg; ctx.fillRect(c.x - 130, c.y - 130, 260, 260);
   // 前摇警示
@@ -1960,8 +2724,8 @@ function drawBoss() {
   const angry = boss.phase >= 2;
   // 身体
   const g = ctx.createRadialGradient(-18, -22, 8, 0, 0, 58);
-  g.addColorStop(0, boss.phase === 3 ? '#4a1838' : '#2c1646');
-  g.addColorStop(1, '#120820');
+  g.addColorStop(0, boss.phase === 3 ? shade(T.b0, 1.45) : T.b0);
+  g.addColorStop(1, T.b1);
   ctx.fillStyle = g;
   ctx.beginPath();
   ctx.ellipse(0, 0, 56, 52, 0, 0, Math.PI * 2); ctx.fill();
@@ -1972,7 +2736,7 @@ function drawBoss() {
     star(Math.cos(a) * r, Math.sin(a) * r * 0.85, 1.8 + rnd(i + 3) * 1.6, a, i % 3 ? '#cdb4ff' : '#ffe9a0');
   }
   // 漩涡环
-  ctx.strokeStyle = rgba('#b28cff', 0.6); ctx.lineWidth = 3;
+  ctx.strokeStyle = rgba(T.ring, 0.6); ctx.lineWidth = 3;
   for (let k = 0; k < 3; k++) {
     ctx.beginPath();
     ctx.arc(0, 0, 18 + k * 9, boss.ph * (1.4 - k * 0.3), boss.ph * (1.4 - k * 0.3) + Math.PI * 1.2);
@@ -2088,7 +2852,7 @@ function drawHUD() {
   ctx.save();
   ctx.fillStyle = 'rgba(8,10,20,0.62)';
   rr(W - 210, 10, 200, 66, 8); ctx.fill();
-  txt((G.level + 1) + ' / 5 · ' + LEVELS[G.level].name.split(' · ')[1], W - 110, 26, 13, '#fff', 'center', true);
+  txt((G.level + 1) + ' / ' + LEVELS.length + ' · ' + LEVELS[G.level].name.split(' · ')[1], W - 110, 26, 13, '#fff', 'center', true);
   txt('用时 ' + fmtTime(G.runTime), W - 110, 46, 13, '#ffd97a', 'center');
   txt('击杀 ' + G.kills, W - 110, 63, 12, '#cfe0ff', 'center');
   if (muted) txt('已静音 (M)', W - 110, 82, 11, '#9a9ab0', 'center');
@@ -2098,7 +2862,7 @@ function drawHUD() {
     ctx.save();
     ctx.fillStyle = 'rgba(8,10,20,0.7)';
     rr(W / 2 - 220, 12, 440, 40, 8); ctx.fill();
-    txt('时空间吞噬者 · ' + (boss.phase === 1 ? '一阶段' : boss.phase === 2 ? '二阶段' : '最终阶段'), W / 2, 24, 12.5, '#ffb0c8', 'center', true);
+    txt(boss.name + ' · ' + (boss.phase === 1 ? '一阶段' : boss.phase === 2 ? '二阶段' : '最终阶段'), W / 2, 24, 12.5, '#ffb0c8', 'center', true);
     const r = clamp(boss.hp / boss.maxHp, 0, 1);
     ctx.fillStyle = '#210a18'; rr(W / 2 - 206, 33, 412, 13, 4); ctx.fill();
     const bgl = ctx.createLinearGradient(W / 2 - 206, 0, W / 2 + 206, 0);
@@ -2176,9 +2940,11 @@ function drawTitle() {
   ctx.shadowColor = rgba('#8a5fd0', 0.9); ctx.shadowBlur = 26;
   txt('时空小队大冒险', W / 2, 118, 58, '#ffd97a', 'center', true);
   ctx.restore();
-  txt('三位小英雄 · 五关冒险 · 捏出你自己的队友', W / 2, 168, 17, '#d8dff0', 'center');
-  button(W / 2 - 90, 208, 180, 50, '开 始 冒 险', () => { G.state = 'select'; }, { primary: true, size: 20 });
-  if (bestTime != null) txt('最佳通关纪录：' + fmtTime(bestTime), W / 2, 286, 15, '#8affd0', 'center', true);
+  txt('三位小英雄 · 六大世界 ' + LEVELS.length + ' 关 · 捏出你自己的队友', W / 2, 168, 17, '#d8dff0', 'center');
+  const cont = prog[G.diff];
+  button(W / 2 - 110, 196, 220, 50, cont > 0 ? '继续冒险 · 第 ' + (cont + 1) + ' 关' : '开 始 冒 险', () => { G.pendingStart = null; G.state = 'select'; }, { primary: true, size: cont > 0 ? 17 : 20 });
+  if (cont > 0) button(W / 2 - 110, 254, 220, 36, '从第 1 关开始', () => { G.pendingStart = 0; G.state = 'select'; }, { size: 14 });
+  if (bestTime != null) txt(DIFF.label + '最佳纪录：' + fmtTime(bestTime), W / 2, 306, 15, '#8affd0', 'center', true);
   txt('A/D 移动 · 空格 跳 · J/鼠标 攻击 · K 技能 · Esc 暂停 · M 静音', W / 2, H - 24, 13.5, '#9aa4c0', 'center');
   if (muted) txt('已静音 (M)', W - 20, 20, 12, '#9a9ab0', 'right');
 }
@@ -2234,10 +3000,15 @@ function drawSelect() {
     else if (c.custom && c.h.skills.length) wrapText(c.h.skillDesc, x + 16, y + 292, w - 32, 15, '#9aa4c0');
     else txt('进入捏人工坊 →', x + w / 2, y + 316, 15, '#7fd4ff', 'center', true);
     ctx.restore();
-    // 自定义卡进入捏人工坊，另外两位直接开跑
+    // 自定义卡进入捏人工坊，另外两位直接开跑（从标题带入的起点继续，或从解锁进度继续）
     if (c.custom) uiButtons.push({ x, y, w, h, cb: () => { G.state = 'editor'; }, disabled: false });
-    else uiButtons.push({ x, y, w, h, cb: () => { hero = c.h; startRun(); }, disabled: false });
+    else uiButtons.push({ x, y, w, h, cb: () => { hero = c.h; startRun(G.pendingStart); G.pendingStart = null; }, disabled: false });
   }
+  // 难度选择行
+  ['easy', 'normal', 'hard'].forEach((k, i) => {
+    button(W / 2 - 168 + i * 116, 472, 108, 36, DIFFS[k].label, () => { setDiff(k); }, { primary: G.diff === k, size: 15 });
+  });
+  txt(DIFF.desc + ' · 已解锁至第 ' + (prog[G.diff] + 1) + ' 关', W / 2, 524, 12, '#8f9ab8', 'center');
   button(24, 20, 120, 38, '← 返回标题', () => { G.state = 'title'; });
 }
 function wrapText(s, x, y, maxW, lineH, color) {
@@ -2349,7 +3120,7 @@ function drawEditor() {
     saveAvatar();
   });
   button(434, 486, 260, 40, heroPrev.skills.length ? '带它出发！（' + heroPrev.title + '）' : '就这样朴素地出发', () => {
-    hero = buildCustomHero(); startRun();
+    hero = buildCustomHero(); startRun(G.pendingStart); G.pendingStart = null;
   }, { primary: true });
 }
 
@@ -2398,7 +3169,7 @@ function drawVictory() {
   }
   panel(W / 2 - 230, 108, 460, 316);
   txt('胜 利 ！', W / 2, 152, 44, '#ffd97a', 'center', true);
-  txt('时空小队穿越了吞噬之巢，世界恢复了秩序', W / 2, 196, 15, '#e8e8f0', 'center');
+  txt('时空小队踏遍六大世界，时空恢复了秩序', W / 2, 196, 15, '#e8e8f0', 'center');
   const rows = [
     ['通关用时', fmtTime(G.runTime)],
     ['怪物击杀', String(G.kills)],
@@ -2412,7 +3183,7 @@ function drawVictory() {
   }
   if (G.newBest) txt('新纪录！', W / 2, ry + 4, 19, '#8affd0', 'center', true);
   else if (bestTime != null) txt('最佳纪录 ' + fmtTime(bestTime), W / 2, ry + 4, 14, '#8affd0', 'center');
-  button(W / 2 - 190, 338, 180, 44, '再来一局', () => { startRun(); }, { primary: true });
+  button(W / 2 - 190, 338, 180, 44, '再来一局', () => { startRun(0); }, { primary: true });
   button(W / 2 + 10, 338, 180, 44, '返回标题', () => { G.state = 'title'; });
 }
 
@@ -2470,6 +3241,19 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+/* 测试钩子：URL 带 #dbg 时暴露内部接口（自动化冒烟测试用，正常游玩不触发） */
+if (location.hash.indexOf('dbg') >= 0) {
+  window.__hs = {
+    G, LEVELS, DIFFS, get DIFF() { return DIFF; },
+    get P() { return P; }, get hero() { return hero; }, setHeroH(h) { hero = h; },
+    get boss() { return boss; }, enemies: () => enemies, keys,
+    buildLevel, startRun, nextLevel, retryLevel, update,
+    trySkill, useSkill, damagePlayer, dealDamage, makeEnemy, setDiff, unlockTo,
+    prog: () => prog, setAV(a) { Object.assign(AV, a); },
+    buildCustomHero, HERO_WAN, HERO_MAO,
+  };
+}
 })();
 </script>
 
