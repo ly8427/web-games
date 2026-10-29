@@ -51,8 +51,10 @@
       box-shadow: 0 4px 18px rgba(0, 0, 0, .5);
     }
     /* 竖屏画布只是顶部窄条，按键原贴画布底边够不着拇指；
-       把触控层铺满全屏，按键自然落到屏幕底部两角 */
-    body.touchOn #cg-touch { position: fixed; inset: 0; z-index: 25; }
+       把触控层铺满全屏，按键自然落到屏幕底部两角。
+       层级必须在菜单浮层(20)之下：菜单显示时按键被盖住防误触，
+       菜单隐藏(游戏进行中)时按键正常可用 */
+    body.touchOn #cg-touch { position: fixed; inset: 0; z-index: 15; }
   }
   #rotateHint {
     display: none;
@@ -1777,6 +1779,9 @@ touchEl.querySelectorAll(".cg-tbtn").forEach(function(btn){
     if(e.type==="pointerdown")viaPointer=true;
     else if(viaPointer)return;
     if(code)keys[code]=true;
+    /* 跳跃物理只认 jumpQueued 一次性标记（原仅键盘事件路径设置），
+       触屏路径必须同样置位，否则按键有事件、角色不跳 */
+    if(state==="playing"&&(code==="Space"||code==="ArrowUp"))player.jumpQueued=true;
     if(action==="attack"){mouse.held=true;attackStart("touch");}
     if(action==="bomb")throwBomb();
     if(action==="chest"){const c=nearChest();if(c)openChest(c);}
