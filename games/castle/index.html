@@ -139,6 +139,7 @@
 #cg-tbtn-right{left:74px;bottom:12px;}
 #cg-tbtn-jump{left:12px;bottom:76px;}
 #cg-tbtn-atk{right:12px;bottom:12px;}
+#cg-tbtn-weapon{right:12px;bottom:76px;}
 #cg-tbtn-bomb{right:74px;bottom:12px;}
 #cg-tbtn-chest{right:136px;bottom:12px;}
 #cg-tbtn-pet{right:198px;bottom:12px;}
@@ -154,6 +155,7 @@
     <div class="cg-tbtn" id="cg-tbtn-right" data-code="ArrowRight">▶</div>
     <div class="cg-tbtn" id="cg-tbtn-jump" data-code="Space">▲</div>
     <div class="cg-tbtn" id="cg-tbtn-atk" data-action="attack">⚔</div>
+    <div class="cg-tbtn" id="cg-tbtn-weapon" data-action="weapon">🏹</div>
     <div class="cg-tbtn" id="cg-tbtn-bomb" data-action="bomb">💣</div>
     <div class="cg-tbtn" id="cg-tbtn-chest" data-action="chest" style="display:none">📦</div>
     <div class="cg-tbtn" id="cg-tbtn-pet" data-action="pet">🐾</div>
@@ -1783,6 +1785,7 @@ touchEl.querySelectorAll(".cg-tbtn").forEach(function(btn){
        触屏路径必须同样置位，否则按键有事件、角色不跳 */
     if(state==="playing"&&(code==="Space"||code==="ArrowUp"))player.jumpQueued=true;
     if(action==="attack"){mouse.held=true;attackStart("touch");}
+    if(action==="weapon"&&state==="playing")switchWeapon();
     if(action==="bomb")throwBomb();
     if(action==="chest"){const c=nearChest();if(c)openChest(c);}
     if(action==="pet")togglePet();};
