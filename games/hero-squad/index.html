@@ -43,7 +43,7 @@ const GROUND_Y = 470;          // 地面顶面 y
 const GRAV = 1500;             // 重力
 const MAXFALL = 900;           // 最大下落速度
 const COYOTE = 0.1;            // 土狼时间
-const JUMPBUF = 0.1;           // 跳跃缓冲
+const JUMPBUF = 0.18;          // 跳跃缓冲（触屏拇指点按普遍早于键盘半拍，0.1 太窄会"按了没跳"）
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -197,6 +197,10 @@ canvas.addEventListener('mousemove', e => {
 canvas.addEventListener('mousedown', e => {
   ensureAudio();
   if (e.button !== 0) return;
+  // 触屏点按可能不带前置 mousemove：命中判定一律用本事件自身坐标，不依赖缓存的鼠标位置
+  const mr = canvas.getBoundingClientRect();
+  mouse.x = (e.clientX - mr.left) * (W / mr.width);
+  mouse.y = (e.clientY - mr.top) * (H / mr.height);
   if (G.state === 'playing') { mouse.held = true; return; }
   // 菜单：命中按钮（倒序 = 后画的在上层）
   for (let i = uiButtons.length - 1; i >= 0; i--) {
@@ -3509,13 +3513,33 @@ if (location.hash.indexOf('dbg') >= 0) {
     el.style.fontSize = Math.round(d / 3.4) + 'px';
   }
 
-  // 按住型：touchstart 按下键，touchend/cancel 抬起（游戏端 keydown 只取按下沿，长按安全）
+  // 按住型：touchstart 按下键，touchend/cancel 抬起。
+  // 手机"按了没反应"的三重防线：
+  //   ① 触点计数——多指同按一个键时，全部手指抬起才松键（旧版第一指抬起就把键松了）；
+  //   ② 每次按下先补一次 keyup 再 keydown——即使上次抬起事件被系统吞掉（来电/切后台/手势打断）
+  //      也不会出现"键卡在按下态吃掉后续按下沿"的失灵；
+  //   ③ 切后台/页面隐藏时统一释放所有按键，杜绝卡键残留。
+  var boundCodes = [];
   function bindHold(el, code) {
-    el.addEventListener('touchstart', function (e) { e.preventDefault(); e.stopPropagation(); el.classList.add('on'); key(code, true); }, { passive: false });
-    var up = function () { el.classList.remove('on'); key(code, false); };
+    boundCodes.push(code);
+    var held = 0;
+    el.addEventListener('touchstart', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      el.classList.add('on');
+      held++;
+      key(code, false);
+      key(code, true);
+    }, { passive: false });
+    var up = function () {
+      held = Math.max(0, held - 1);
+      if (held === 0) { el.classList.remove('on'); key(code, false); }
+    };
     el.addEventListener('touchend', function (e) { e.preventDefault(); up(); }, { passive: false });
     el.addEventListener('touchcancel', up);
   }
+  function releaseAllHeld() { boundCodes.forEach(function (c) { key(c, false); }); }
+  window.addEventListener('pagehide', releaseAllHeld);
+  document.addEventListener('visibilitychange', function () { if (document.hidden) releaseAllHeld(); });
   // 单发型：按下立即触发并抬起
   function bindTap(el, code) {
     el.addEventListener('touchstart', function (e) { e.preventDefault(); e.stopPropagation(); el.classList.add('on'); edgeKey(code); }, { passive: false });
@@ -3532,10 +3556,18 @@ if (location.hash.indexOf('dbg') >= 0) {
 
   if ('ontouchstart' in window || navigator.maxTouchPoints > 0) enable();
   document.addEventListener('touchstart', function () { enable(); }, { once: true, capture: true, passive: true });
-  /* 兜底拦截双击缩放：320ms 内的第二次 touchend 阻止默认（Safari 双击放大） */
+  /* 兜底拦截双击缩放：320ms 内的第二次 touchend 阻止默认（Safari 双击放大）。
+   * 注意：画布与虚拟按键区必须放行——拦掉 touchend 的默认行为会让 Safari
+   * 不再合成 mousedown/click，快速点菜单时第二下会被吞（"要点两下才有反应"）。
+   * 这两个区域本身都有 touch-action:none，iOS 不会在此触发双击放大，无需拦截。 */
   var lastTap = 0;
   document.addEventListener('touchend', function (e) {
     var now = Date.now();
+    var t = e.target;
+    if (t && (t.id === 'game' || (t.classList && t.classList.contains('tbtn')))) {
+      lastTap = now;
+      return;
+    }
     if (now - lastTap < 320 && e.touches.length === 0) e.preventDefault();
     lastTap = now;
   }, { passive: false });
