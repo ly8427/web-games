@@ -722,12 +722,14 @@ function ARENA(name, tip, pal, o) {
     spikes: [], flames: o.flames || [], crushers: [], seals: o.seals || [],
     enemies: o.enemies || [],
     pickups: o.pickups || [
-      { type: 'heart', x: 300, y: 440 }, { type: 'heart', x: 1360, y: 440 },
-      { type: 'crystal', x: 720, y: 440 }, { type: 'crystal', x: 940, y: 440 },
+      { type: 'heart', x: 240, y: 440 }, { type: 'heart', x: 720, y: 440 },
+      { type: 'heart', x: 940, y: 440 }, { type: 'heart', x: 1420, y: 440 },
+      { type: 'crystal', x: 480, y: 440 }, { type: 'crystal', x: 1180, y: 440 },
     ],
-    signs: [], npcs: o.npcs || [], exit: null, boss: true, bossSpawn: [1180, 240],
+    signs: o.signs || [], npcs: o.npcs || [], exit: null, boss: true, bossSpawn: [1180, 240],
     bossName: o.bossName || '时空间吞噬者', bossTint: o.tint || BOSS_TINTS.chrono,
     bossHp: o.hp || 1, bossRate: o.rate || 1,
+    bossHoverY: o.hover != null ? o.hover : 235, bossKeepDist: o.keep != null ? o.keep : 250, bossRecover: o.recover != null ? o.recover : 0.85,
   };
 }
 /* ---- 原版手作 5 关（保留原数据，归入对应世界） ---- */
@@ -1098,9 +1100,13 @@ const W6_5 = LB('6-5 · 星陨天梯', '最终试炼前的天梯：登顶者方�
   .gap(130)
   .exitPad(380, { pk: [['heart', 240, 440]] }).L;
 /* ---- BOSS 竞技场（每个世界末一座） ---- */
-const ARENA_1 = ARENA('1-6 · 暗影吞噬者', '击败把平原拖进黑夜的暗影吞噬者！', 0, {
-  plats: [[230, 386, 150], [1180, 386, 150]],
-  bossName: '暗影吞噬者', tint: BOSS_TINTS.shadow, hp: 0.55, rate: 0.85,
+const ARENA_1 = ARENA('1-6 · 暗影吞噬者', '它悬在空中——跳上中央高台，跃起挥剑劈它！', 0, {
+  plats: [[230, 386, 150], [630, 386, 300], [1180, 386, 150]],
+  signs: [[470, '跳上中央高台，跃起挥剑就能劈到它！']],
+  // 新手首场 BOSS：更低更贴身的悬浮（高台跳劈可及）、更短的赖人距离、
+  // 更长的攻击后硬直（输出窗口更久）、血量与出手速度全线下调
+  bossName: '暗影吞噬者', tint: BOSS_TINTS.shadow, hp: 0.4, rate: 0.78,
+  hover: 255, keep: 150, recover: 1.2,
 });
 const ARENA_2 = ARENA('2-6 · 熔核吞噬者', '地板会喷火——用中央高台走位！', 1, {
   plats: [[620, 386, 300]], flames: [[480, 4.6, 0], [1120, 4.6, 2.3]],
@@ -1863,6 +1869,10 @@ function makeBoss(x, y) {
   return {
     x: x - 55, y, w: 110, h: 110, hp, maxHp: hp,
     name: L.bossName || '时空间吞噬者', tint: L.bossTint || BOSS_TINTS.chrono, rate: L.bossRate || 1,
+    // 行为可调参数（各竞技场可覆盖；缺省=原版行为）：悬浮高度 / 与玩家保持的水平距离 / 攻击后硬直
+    hoverY: L.bossHoverY != null ? L.bossHoverY : 235,
+    keepDist: L.bossKeepDist != null ? L.bossKeepDist : 250,
+    recoverT: L.bossRecover != null ? L.bossRecover : 0.85,
     phase: 1, state: 'hover', t: 0, atkCd: 2.0,
     vx: 0, vy: 0, dir: -1, ph: 0,
     dashTX: 0, dashTY: 0, dashHit: false,
@@ -1918,8 +1928,8 @@ function updateBoss(dt) {
     b.atkCd -= edt;
     // 悬浮移动：与玩家保持距离
     const side = c.x > pcx ? 1 : -1;
-    const tx = clamp(pcx + side * 250, 130, 1430);
-    const ty = 235 + Math.sin(b.ph * 1.1) * 45;
+    const tx = clamp(pcx + side * b.keepDist, 130, 1430);
+    const ty = b.hoverY + Math.sin(b.ph * 1.1) * 45;
     b.x += clamp(tx - c.x, -130, 130) * edt;
     b.y += clamp(ty - c.y, -110, 110) * edt;
     if (b.atkCd <= 0) {
@@ -2005,7 +2015,7 @@ function updateBoss(dt) {
       bossStartAtk('recover');
     }
   } else if (b.state === 'recover') {
-    if (b.t > 0.85) { b.state = 'hover'; b.t = 0; b.atkCd = b.phase === 1 ? 2.2 : b.phase === 2 ? 1.8 : 1.5; }
+    if (b.t > b.recoverT) { b.state = 'hover'; b.t = 0; b.atkCd = b.phase === 1 ? 2.2 : b.phase === 2 ? 1.8 : 1.5; }
   }
   // 接触伤害（非冲刺状态）
   if (b.state !== 'dash' && overlap(b, P) && P.hp > 0) damagePlayer(15, '被吞噬者吞没');
