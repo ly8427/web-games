@@ -1122,6 +1122,18 @@
   // 初始预览
   drawBackground();
   drawPlayer();
+
+  // debug 钩子（仅 URL 含 #debug 时暴露；供调试面板使用，正常游玩不受影响）
+  if (location.hash.indexOf('debug') >= 0) {
+    window.__pmDebug = {
+      startGame, startWave,
+      getState: () => state,
+      TOTAL_WAVES,
+      currentWave: () => state ? state.wave : 1,
+      running: () => !!state && state.running,
+      jumpToWave(n) { startGame(); state.wave = Math.max(1, Math.min(TOTAL_WAVES, n)); startWave(); },
+    };
+  }
 })();
 </script>
 
@@ -1276,6 +1288,70 @@
     if (now - lastTap < 320 && e.touches.length === 0) e.preventDefault();
     lastTap = now;
   }, { passive: false });
+})();
+</script>
+<!-- ===== 调试面板（仅 URL 含 #debug 时出现：无敌 + 任意切关；正常游玩不受影响） ===== -->
+<style>
+  #dbgPanel { position: fixed; left: 8px; top: 38%; z-index: 90;
+    font: 12px "Microsoft YaHei","PingFang SC",sans-serif; user-select: none; -webkit-user-select: none; }
+  #dbgBtn { width: 38px; height: 38px; border-radius: 50%; background: rgba(16,20,34,.78);
+    border: 2px solid #ffd97a; color: #ffd97a; font-size: 17px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; touch-action: none; padding: 0; }
+  #dbgBox { display: none; width: 188px; margin-top: 6px; background: rgba(10,12,22,.93);
+    border: 1.5px solid #ffd97a; border-radius: 10px; padding: 9px 10px; color: #e8ecf4;
+    box-shadow: 0 6px 24px rgba(0,0,0,.55); }
+  #dbgBox.show { display: block; }
+  #dbgBox .dbg-t { color: #ffd97a; font-weight: bold; letter-spacing: 2px; }
+  #dbgBox .dbg-row { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+  #dbgBox button, #dbgBox select { min-width: 0; background: #2a3044; color: #fff;
+    border: 1px solid #5a6480; border-radius: 6px; padding: 5px 6px; font-size: 12px; cursor: pointer; touch-action: manipulation; }
+  #dbgBox button { flex: 1; }
+  #dbgBox button.dbg-on { background: #3f8f4a; border-color: #7ce86a; }
+  #dbgBox select { flex: 3; }
+</style>
+<div id="dbgPanel">
+  <button id="dbgBtn" title="调试面板">🐞</button>
+  <div id="dbgBox">
+    <div class="dbg-t">DEBUG</div>
+    <div class="dbg-row"><button id="dbgGod">无敌：关</button></div>
+    
+    <div class="dbg-row"><button id="dbgPrev">◀</button><select id="dbgSel"></select><button id="dbgNext">▶</button></div>
+    <div class="dbg-row"><button id="dbgGo">跳到此关</button><button id="dbgRetry">重玩</button></div>
+  </div>
+</div>
+<script>
+(function () {
+  if (!/debug/.test(location.hash)) return;   // 仅 #debug 激活
+  var pm = window.__pmDebug; if (!pm) return;
+  var $ = function (id) { return document.getElementById(id); };
+  var sel = $('dbgSel');
+  for (var i = 1; i <= pm.TOTAL_WAVES; i++) {
+    var o = document.createElement('option');
+    o.value = i; o.textContent = '第' + i + '波';
+    sel.appendChild(o);
+  }
+  var godOn = false, godTimer = 0;
+  $('dbgGod').addEventListener('click', function () {
+    godOn = !godOn;
+    this.textContent = '无敌：' + (godOn ? '开' : '关');
+    this.classList.toggle('dbg-on', godOn);
+    if (godOn && !godTimer) godTimer = setInterval(function () {
+      var s = pm.getState();
+      if (s && pm.running() && s.player.hp > 0) s.player.hp = s.player.maxHp;
+    }, 80);
+  });
+  function jump(n) {
+    sel.value = n;
+    pm.jumpToWave(n);
+  }
+  $('dbgGo').addEventListener('click', function () { jump(parseInt(sel.value, 10)); });
+  $('dbgPrev').addEventListener('click', function () { jump(Math.max(1, pm.currentWave() - 1)); });
+  $('dbgNext').addEventListener('click', function () { jump(Math.min(pm.TOTAL_WAVES, pm.currentWave() + 1)); });
+  $('dbgRetry').addEventListener('click', function () { jump(pm.currentWave()); });
+  $('dbgBtn').addEventListener('click', function () { $('dbgBox').classList.toggle('show'); });
+  setInterval(function () {   // 下拉框跟随当前波次
+    if (document.activeElement !== sel && pm.running()) sel.value = pm.currentWave();
+  }, 300);
 })();
 </script>
 </body>

@@ -1821,5 +1821,85 @@ root.__cgDebug={startRun:startRun,startLevel:startLevel,fireBow:fireBow,throwBom
   }, { passive: false });
 })();
 </script>
+<!-- ===== 调试面板（仅 URL 含 #debug 时出现：无敌 + 任意切关；正常游玩不受影响） ===== -->
+<style>
+  #dbgPanel { position: fixed; left: 8px; top: 38%; z-index: 90;
+    font: 12px "Microsoft YaHei","PingFang SC",sans-serif; user-select: none; -webkit-user-select: none; }
+  #dbgBtn { width: 38px; height: 38px; border-radius: 50%; background: rgba(16,20,34,.78);
+    border: 2px solid #ffd97a; color: #ffd97a; font-size: 17px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; touch-action: none; padding: 0; }
+  #dbgBox { display: none; width: 188px; margin-top: 6px; background: rgba(10,12,22,.93);
+    border: 1.5px solid #ffd97a; border-radius: 10px; padding: 9px 10px; color: #e8ecf4;
+    box-shadow: 0 6px 24px rgba(0,0,0,.55); }
+  #dbgBox.show { display: block; }
+  #dbgBox .dbg-t { color: #ffd97a; font-weight: bold; letter-spacing: 2px; }
+  #dbgBox .dbg-row { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+  #dbgBox button, #dbgBox select { min-width: 0; background: #2a3044; color: #fff;
+    border: 1px solid #5a6480; border-radius: 6px; padding: 5px 6px; font-size: 12px; cursor: pointer; touch-action: manipulation; }
+  #dbgBox button { flex: 1; }
+  #dbgBox button.dbg-on { background: #3f8f4a; border-color: #7ce86a; }
+  #dbgBox select { flex: 3; }
+</style>
+<div id="dbgPanel">
+  <button id="dbgBtn" title="调试面板">🐞</button>
+  <div id="dbgBox">
+    <div class="dbg-t">DEBUG</div>
+    <div class="dbg-row"><button id="dbgGod">无敌：关</button></div>
+        <div class="dbg-row"><button id="dbgMapC">古堡</button><button id="dbgMapP">金字塔</button></div>
+    <div class="dbg-row"><button id="dbgPrev">◀</button><select id="dbgSel"></select><button id="dbgNext">▶</button></div>
+    <div class="dbg-row"><button id="dbgGo">跳到此关</button><button id="dbgRetry">重玩</button></div>
+  </div>
+</div>
+<script>
+(function () {
+  if (!/debug/.test(location.hash)) return;   // 仅 #debug 激活
+  var cg = (document.getElementById("castle-game") || {}).__cgDebug; if (!cg) return;
+  var $ = function (id) { return document.getElementById(id); };
+  var MAPS = [['castle', '古堡', 10], ['pyramid', '金字塔', 10]];
+  var curMap = 'castle';
+  var sel = $('dbgSel');
+  function fillSel() {
+    var map = null;
+    for (var k = 0; k < MAPS.length; k++) if (MAPS[k][0] === curMap) map = MAPS[k];
+    while (sel.firstChild) sel.removeChild(sel.firstChild);
+    for (var i = 1; i <= map[2]; i++) {
+      var o = document.createElement('option');
+      o.value = i; o.textContent = '第' + i + (map[0] === 'pyramid' ? '层' : '关');
+      sel.appendChild(o);
+    }
+  }
+  function syncMapBtns() {
+    $('dbgMapC').classList.toggle('dbg-on', curMap === 'castle');
+    $('dbgMapP').classList.toggle('dbg-on', curMap === 'pyramid');
+  }
+  $('dbgMapC').addEventListener('click', function () { curMap = 'castle'; syncMapBtns(); fillSel(); });
+  $('dbgMapP').addEventListener('click', function () { curMap = 'pyramid'; syncMapBtns(); fillSel(); });
+  var godOn = false, godTimer = 0;
+  $('dbgGod').addEventListener('click', function () {
+    godOn = !godOn;
+    this.textContent = '无敌：' + (godOn ? '开' : '关');
+    this.classList.toggle('dbg-on', godOn);
+    if (godOn && !godTimer) godTimer = setInterval(function () {
+      var p = cg.getPlayer();
+      if (p && !p.dead && p.hp > 0) p.hp = p.maxHp;
+    }, 80);
+  });
+  function jump(n) {
+    n = Math.max(1, Math.min((curMap === 'pyramid' ? MAPS[1][2] : MAPS[0][2]), n));
+    sel.value = n;
+    cg.startRun(curMap);
+    cg.startLevel(n);
+  }
+  $('dbgGo').addEventListener('click', function () { jump(parseInt(sel.value, 10)); });
+  $('dbgPrev').addEventListener('click', function () { jump(cg.getLevelNum() - 1); });
+  $('dbgNext').addEventListener('click', function () { jump(cg.getLevelNum() + 1); });
+  $('dbgRetry').addEventListener('click', function () { jump(cg.getLevelNum()); });
+  $('dbgBtn').addEventListener('click', function () { $('dbgBox').classList.toggle('show'); });
+  setInterval(function () {   // 下拉框/地图跟随当前进度
+    if (document.activeElement !== sel) sel.value = cg.getLevelNum();
+    if (cg.getMap() !== curMap) { curMap = cg.getMap(); syncMapBtns(); fillSel(); }
+  }, 300);
+})();
+</script>
 </body>
 </html>
