@@ -3829,6 +3829,7 @@ if (/(dbg|debug)/.test(location.hash)) {
   document.addEventListener('touchend', function (e) {
     var now = Date.now();
     var t = e.target;
+    if (t && t.closest && t.closest('#dbgPanel')) return;   // 调试面板放行（否则面板点击会被本兜底吞掉）
     if (t && (t.id === 'game' || (t.classList && t.classList.contains('tbtn')))) {
       lastTap = now;
       return;

@@ -1281,10 +1281,13 @@
   // ---- 启用条件：支持触摸的设备，或第一次真实触摸 ----
   if ('ontouchstart' in window || navigator.maxTouchPoints > 0) enable();
   document.addEventListener('touchstart', function () { enable(); }, { once: true, capture: true, passive: true });
-  /* 兜底拦截双击缩放：320ms 内的第二次 touchend 阻止默认（Safari 双击放大） */
+  /* 兜底拦截双击缩放：320ms 内的第二次 touchend 阻止默认（Safari 双击放大）。
+   * 调试面板放行：拦截 touchend 会连带吞掉 Safari 合成的 click，面板会点不动。 */
   var lastTap = 0;
   document.addEventListener('touchend', function (e) {
     var now = Date.now();
+    var t = e.target;
+    if (t && t.closest && t.closest('#dbgPanel')) return;
     if (now - lastTap < 320 && e.touches.length === 0) e.preventDefault();
     lastTap = now;
   }, { passive: false });
