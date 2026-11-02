@@ -3439,8 +3439,8 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-/* 测试钩子：URL 带 #dbg 时暴露内部接口（自动化冒烟测试用，正常游玩不触发） */
-if (location.hash.indexOf('dbg') >= 0) {
+/* 测试钩子：URL 带 #dbg 或 #debug 时暴露内部接口（调试面板/自动化测试用，正常游玩不触发） */
+if (/(dbg|debug)/.test(location.hash)) {
   window.__hs = {
     G, LEVELS, DIFFS, get DIFF() { return DIFF; },
     get P() { return P; }, get hero() { return hero; }, setHeroH(h) { hero = h; },
@@ -3581,6 +3581,82 @@ if (location.hash.indexOf('dbg') >= 0) {
     if (now - lastTap < 320 && e.touches.length === 0) e.preventDefault();
     lastTap = now;
   }, { passive: false });
+})();
+</script>
+<!-- ===== 调试面板（仅 URL 含 #debug 时出现：无敌 + 任意切关；正常游玩不受影响） ===== -->
+<style>
+  #dbgPanel { position: fixed; left: 8px; top: 38%; z-index: 90;
+    font: 12px "Microsoft YaHei","PingFang SC",sans-serif; user-select: none; -webkit-user-select: none; }
+  #dbgBtn { width: 38px; height: 38px; border-radius: 50%; background: rgba(16,20,34,.78);
+    border: 2px solid #ffd97a; color: #ffd97a; font-size: 17px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; touch-action: none; padding: 0; }
+  #dbgBox { display: none; width: 188px; margin-top: 6px; background: rgba(10,12,22,.93);
+    border: 1.5px solid #ffd97a; border-radius: 10px; padding: 9px 10px; color: #e8ecf4;
+    box-shadow: 0 6px 24px rgba(0,0,0,.55); }
+  #dbgBox.show { display: block; }
+  #dbgBox .dbg-t { color: #ffd97a; font-weight: bold; letter-spacing: 2px; }
+  #dbgBox .dbg-row { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+  #dbgBox button, #dbgBox select { min-width: 0; background: #2a3044; color: #fff;
+    border: 1px solid #5a6480; border-radius: 6px; padding: 5px 6px; font-size: 12px; cursor: pointer; touch-action: manipulation; }
+  #dbgBox button { flex: 1; }
+  #dbgBox button.dbg-on { background: #3f8f4a; border-color: #7ce86a; }
+  #dbgBox select { flex: 3; }
+</style>
+<div id="dbgPanel">
+  <button id="dbgBtn" title="调试面板">🐞</button>
+  <div id="dbgBox">
+    <div class="dbg-t">DEBUG</div>
+    <div class="dbg-row"><button id="dbgGod">无敌：关</button></div>
+    
+    <div class="dbg-row"><button id="dbgPrev">◀</button><select id="dbgSel"></select><button id="dbgNext">▶</button></div>
+    <div class="dbg-row"><button id="dbgGo">跳到此关</button><button id="dbgRetry">重玩</button></div>
+  </div>
+</div>
+<script>
+(function () {
+  if (!/debug/.test(location.hash)) return;   // 仅 #debug 激活
+  var hs = window.__hs; if (!hs) return;
+  var $ = function (id) { return document.getElementById(id); };
+  var sel = $('dbgSel');
+  for (var i = 0; i < hs.LEVELS.length; i++) {
+    var o = document.createElement('option');
+    o.value = i; o.textContent = '第' + (i + 1) + '关' + (hs.LEVELS[i].boss ? '·BOSS' : '');
+    sel.appendChild(o);
+  }
+  var godOn = false, godTimer = 0;
+  $('dbgGod').addEventListener('click', function () {
+    godOn = !godOn;
+    this.textContent = '无敌：' + (godOn ? '开' : '关');
+    this.classList.toggle('dbg-on', godOn);
+    if (godOn && !godTimer) godTimer = setInterval(function () {
+      var p = hs.P;
+      if (!p) return;
+      if (p.hp <= 0 && hs.G.state === 'dead') {   // 无敌开着时倒地自动爬起
+        p.hp = p.maxHp; p.invuln = 1.2; hs.G.state = 'playing'; hs.G.banner = null;
+      }
+      if (p.hp > 0) {
+        p.hp = p.maxHp;
+        if (p.y > 500) {                           // 坠崖前拉回出生点
+          p.x = hs.LEVELS[hs.G.level].spawn; p.y = 470 - p.h; p.vx = 0; p.vy = 0; p.invuln = 1;
+        }
+      }
+    }, 50);
+  });
+  function jump(i) {
+    i = Math.max(0, Math.min(hs.LEVELS.length - 1, i));
+    sel.value = i;
+    hs.G.pendingStart = null;
+    if (!hs.hero) hs.setHeroH(hs.HERO_WAN);   // 标题界面直接跳关时默认小晚
+    hs.buildLevel(i); hs.G.state = 'playing'; hs.G.introT = 0; hs.G.banner = null;
+  }
+  $('dbgGo').addEventListener('click', function () { jump(parseInt(sel.value, 10)); });
+  $('dbgPrev').addEventListener('click', function () { jump(hs.G.level - 1); });
+  $('dbgNext').addEventListener('click', function () { jump(hs.G.level + 1); });
+  $('dbgRetry').addEventListener('click', function () { jump(hs.G.level); });
+  $('dbgBtn').addEventListener('click', function () { $('dbgBox').classList.toggle('show'); });
+  setInterval(function () {   // 下拉框跟随当前关卡
+    if (document.activeElement !== sel) sel.value = Math.max(0, Math.min(hs.LEVELS.length - 1, hs.G.level));
+  }, 300);
 })();
 </script>
 </body>
