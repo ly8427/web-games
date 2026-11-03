@@ -3829,6 +3829,7 @@ if (/(dbg|debug)/.test(location.hash)) {
   document.addEventListener('touchend', function (e) {
     var now = Date.now();
     var t = e.target;
+    if (t && t.closest && t.closest('#dbgPanel')) return;   // 调试面板放行（否则面板点击会被本兜底吞掉）
     if (t && (t.id === 'game' || (t.classList && t.classList.contains('tbtn')))) {
       lastTap = now;
       return;
@@ -3840,7 +3841,7 @@ if (/(dbg|debug)/.test(location.hash)) {
 </script>
 <!-- ===== 调试面板（仅 URL 含 #debug 时出现：无敌 + 任意切关；正常游玩不受影响） ===== -->
 <style>
-  #dbgPanel { position: fixed; left: 8px; top: 38%; z-index: 90;
+  #dbgPanel { display: none; position: fixed; left: 8px; top: 38%; z-index: 90;  /* 默认隐藏：非 #debug 模式不应露出摆设按钮 */
     font: 12px "Microsoft YaHei","PingFang SC",sans-serif; user-select: none; -webkit-user-select: none; }
   #dbgBtn { width: 38px; height: 38px; border-radius: 50%; background: rgba(16,20,34,.78);
     border: 2px solid #ffd97a; color: #ffd97a; font-size: 17px; cursor: pointer;
@@ -3870,6 +3871,7 @@ if (/(dbg|debug)/.test(location.hash)) {
 <script>
 (function () {
   if (!/debug/.test(location.hash)) return;   // 仅 #debug 激活
+  document.getElementById('dbgPanel').style.display = 'block';  // 激活后才显示面板（含🐞按钮）
   var hs = window.__hs; if (!hs) return;
   var $ = function (id) { return document.getElementById(id); };
   var sel = $('dbgSel');

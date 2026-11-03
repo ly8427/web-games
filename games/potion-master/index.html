@@ -1281,10 +1281,13 @@
   // ---- 启用条件：支持触摸的设备，或第一次真实触摸 ----
   if ('ontouchstart' in window || navigator.maxTouchPoints > 0) enable();
   document.addEventListener('touchstart', function () { enable(); }, { once: true, capture: true, passive: true });
-  /* 兜底拦截双击缩放：320ms 内的第二次 touchend 阻止默认（Safari 双击放大） */
+  /* 兜底拦截双击缩放：320ms 内的第二次 touchend 阻止默认（Safari 双击放大）。
+   * 调试面板放行：拦截 touchend 会连带吞掉 Safari 合成的 click，面板会点不动。 */
   var lastTap = 0;
   document.addEventListener('touchend', function (e) {
     var now = Date.now();
+    var t = e.target;
+    if (t && t.closest && t.closest('#dbgPanel')) return;
     if (now - lastTap < 320 && e.touches.length === 0) e.preventDefault();
     lastTap = now;
   }, { passive: false });
@@ -1292,7 +1295,7 @@
 </script>
 <!-- ===== 调试面板（仅 URL 含 #debug 时出现：无敌 + 任意切关；正常游玩不受影响） ===== -->
 <style>
-  #dbgPanel { position: fixed; left: 8px; top: 38%; z-index: 90;
+  #dbgPanel { display: none; position: fixed; left: 8px; top: 38%; z-index: 90;  /* 默认隐藏：非 #debug 模式不应露出摆设按钮 */
     font: 12px "Microsoft YaHei","PingFang SC",sans-serif; user-select: none; -webkit-user-select: none; }
   #dbgBtn { width: 38px; height: 38px; border-radius: 50%; background: rgba(16,20,34,.78);
     border: 2px solid #ffd97a; color: #ffd97a; font-size: 17px; cursor: pointer;
@@ -1322,6 +1325,7 @@
 <script>
 (function () {
   if (!/debug/.test(location.hash)) return;   // 仅 #debug 激活
+  document.getElementById('dbgPanel').style.display = 'block';  // 激活后才显示面板（含🐞按钮）
   var pm = window.__pmDebug; if (!pm) return;
   var $ = function (id) { return document.getElementById(id); };
   var sel = $('dbgSel');
