@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>单词跑酷</title>
+<style>
+  :root{--peace:#4ade80;--easy:#60a5fa;--normal:#fbbf24;--hard:#f87171;--accent:#60a5fa;}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:radial-gradient(ellipse at 50% -20%,#1e293b 0%,#0b1120 60%);
+    min-height:100vh;color:#e2e8f0;
+    display:flex;align-items:center;justify-content:center;padding:14px;
+  }
+  .screen{display:none;width:100%;max-width:600px;}
+  .screen.active{display:block;animation:fade .28s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .title{font-size:32px;text-align:center;font-weight:800;letter-spacing:3px;
+    background:linear-gradient(90deg,#60a5fa,#a78bfa,#f472b6);
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .subtitle{text-align:center;color:#94a3b8;margin:8px 0 16px;font-size:13px;}
+
+  /* ---------- 通用 ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;}
+  .back-btn{background:none;border:none;color:#94a3b8;font-size:14px;cursor:pointer;
+    font-family:inherit;padding:6px 0;flex-shrink:0;}
+  .back-btn:hover{color:#e2e8f0;}
+  .page-title{font-size:18px;font-weight:700;}
+  .page-sub{font-size:13px;color:#94a3b8;margin:4px 0 14px;}
+  .level-info{font-size:14px;color:#94a3b8;display:flex;align-items:center;gap:6px;
+    flex-wrap:wrap;justify-content:flex-end;}
+  .level-info .dn{font-weight:700;}
+  .dots{letter-spacing:2px;font-size:11px;}
+  .spacer{width:48px;flex-shrink:0;}
+  .mini-btn{background:rgba(255,255,255,.08);border:none;color:#cbd5e1;
+    font-size:12px;padding:6px 12px;border-radius:99px;cursor:pointer;
+    font-family:inherit;transition:.15s;flex-shrink:0;}
+  .mini-btn:hover{background:rgba(255,255,255,.15);color:#fff;}
+
+  /* ---------- 玩家栏 ---------- */
+  .player-bar{
+    display:flex;align-items:center;gap:10px;margin-bottom:12px;
+    padding:11px 15px;background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);border-radius:14px;
+  }
+  .avatar{width:30px;height:30px;border-radius:50%;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;font-weight:800;color:#0b1120;}
+  .player-label{font-size:12px;color:#64748b;}
+  .player-nick{font-weight:700;color:#e2e8f0;flex:1;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
+
+  /* ---------- 难度卡 ---------- */
+  .difficulties{display:grid;gap:10px;}
+  .diff-card{
+    display:grid;grid-template-columns:1fr auto;grid-template-areas:"name prog" "desc prog";
+    align-items:center;gap:2px 10px;padding:14px 16px;
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+    border-radius:14px;color:inherit;cursor:pointer;text-align:left;
+    font-family:inherit;transition:.18s;position:relative;overflow:hidden;
+  }
+  .diff-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c);}
+  .diff-card:hover{transform:translateY(-2px);background:rgba(255,255,255,.07);border-color:var(--c);}
+  .diff-card:active{transform:scale(.99);}
+  .diff-card.sel{border-color:var(--c);background:rgba(255,255,255,.09);
+    box-shadow:0 0 0 1px var(--c) inset;}
+  .diff-name{grid-area:name;font-size:17px;font-weight:700;color:var(--c);}
+  .diff-desc{grid-area:desc;font-size:12px;color:#94a3b8;}
+  .diff-progress{grid-area:prog;font-size:12px;color:#64748b;}
+  .diff-card[data-diff="peace"]{--c:var(--peace)}
+  .diff-card[data-diff="easy"]{--c:var(--easy)}
+  .diff-card[data-diff="normal"]{--c:var(--normal)}
+  .diff-card[data-diff="hard"]{--c:var(--hard)}
+
+  .menu-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;}
+  .ghost-btn{padding:13px;border-radius:13px;background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.1);color:#cbd5e1;font-size:14px;font-weight:600;
+    cursor:pointer;font-family:inherit;transition:.18s;}
+  .ghost-btn:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.22);color:#fff;}
+  .ghost-btn.primary{background:linear-gradient(135deg,#3b82f6,#6366f1);border:none;color:#fff;}
+  .ghost-btn.primary:hover{filter:brightness(1.12);}
+
+  /* ---------- 跑酷画布 ---------- */
+  .runner-wrap{
+    position:relative;height:170px;border-radius:16px;overflow:hidden;
+    border:1px solid rgba(255,255,255,.08);margin-bottom:8px;
+    background:#0b1120;
+  }
+  #runnerCanvas,#duelCanvas{display:block;width:100%;height:100%;}
+  .speed-badge{
+    position:absolute;top:10px;left:12px;
+    font-size:12px;color:rgba(255,255,255,.8);
+    background:rgba(0,0,0,.4);padding:4px 11px;border-radius:99px;
+    backdrop-filter:blur(4px);font-variant-numeric:tabular-nums;
+  }
+  .speed-badge b{font-size:14px;}
+
+  .speed-bar{height:8px;border-radius:99px;overflow:hidden;background:rgba(255,255,255,.08);margin-bottom:14px;}
+  .speed-fill{height:100%;width:30%;border-radius:99px;transition:width .15s linear,background .3s;}
+
+  .word-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+    border-radius:16px;padding:18px 16px;text-align:center;margin-bottom:12px;}
+  .zh{font-size:24px;font-weight:700;margin-bottom:8px;line-height:1.35;word-break:break-word;}
+  .hint{font-size:15px;letter-spacing:3px;color:#64748b;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-word;line-height:1.6;}
+
+  input[type=text].answer{width:100%;padding:14px 16px;font-size:18px;background:rgba(255,255,255,.05);
+    border:2px solid rgba(255,255,255,.1);border-radius:13px;color:#fff;outline:none;
+    font-family:inherit;text-align:center;letter-spacing:1px;transition:.18s;}
+  input[type=text].answer:focus{border-color:var(--accent);background:rgba(255,255,255,.08);}
+  input[type=text].answer:disabled{opacity:.45;}
+
+  .feedback{min-height:24px;text-align:center;font-size:13px;margin:8px 0;line-height:1.5;transition:.2s;}
+  .feedback.ok{color:#4ade80;}
+  .feedback.err{color:#f87171;}
+  .feedback b{color:#fff;font-size:15px;letter-spacing:1px;font-family:ui-monospace,monospace;}
+
+  .submit-btn{width:100%;padding:14px;font-size:16px;font-weight:700;border:none;border-radius:13px;
+    cursor:pointer;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;
+    font-family:inherit;transition:.18s;}
+  .submit-btn:hover{filter:brightness(1.12);}
+  .submit-btn:active{transform:scale(.985);}
+  .submit-btn:disabled{opacity:.4;cursor:not-allowed;}
+
+  .shake{animation:shake .4s;}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}
+    40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+
+  /* ---------- 双人竞速 ---------- */
+  .duel-wrap{position:relative;height:210px;border-radius:16px;overflow:hidden;
+    border:1px solid rgba(255,255,255,.08);background:#0b1120;margin-bottom:10px;}
+  .duel-panel{
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+    border-radius:14px;padding:12px 14px;margin-bottom:10px;transition:.18s;
+  }
+  .duel-panel.focus{border-color:var(--accent);background:rgba(255,255,255,.07);}
+  .dp-head{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+  .dp-name{font-size:13px;font-weight:800;}
+  .dp-dist{margin-left:auto;font-size:12px;color:#94a3b8;font-variant-numeric:tabular-nums;}
+  .dp-zh{font-size:19px;font-weight:700;}
+  .dp-hint{font-size:13px;letter-spacing:2px;color:#64748b;margin-bottom:8px;
+    font-family:ui-monospace,monospace;word-break:break-word;}
+  .duel-panel input[type=text]{width:100%;padding:11px 14px;font-size:16px;
+    background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.1);
+    border-radius:11px;color:#fff;outline:none;font-family:inherit;
+    text-align:center;letter-spacing:1px;transition:.15s;}
+  .duel-panel input[type=text]:focus{border-color:var(--pc,var(--accent));background:rgba(255,255,255,.08);}
+  .duel-panel input[type=text]:disabled{opacity:.45;}
+  .dp-fb{min-height:20px;font-size:12px;margin-top:6px;line-height:1.4;}
+  .dp-fb.ok{color:#4ade80;}
+  .dp-fb.err{color:#f87171;}
+  .dp-fb b{color:#fff;font-family:ui-monospace,monospace;}
+
+  /* ---------- 结算 ---------- */
+  #result,#duelResult{text-align:center;}
+  .result-icon{font-size:56px;margin-bottom:6px;animation:fade .5s ease;}
+  .result-title{font-size:23px;margin-bottom:6px;}
+  .result-stats{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:16px 0 14px;}
+  .rs-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+    border-radius:12px;padding:11px 8px;}
+  .rs-label{display:block;font-size:11px;color:#94a3b8;margin-bottom:3px;}
+  .rs-value{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .rs-value.gold{color:#fbbf24;}
+  .result-text{color:#94a3b8;margin-bottom:20px;font-size:13px;line-height:1.75;}
+  .result-text b{color:#e2e8f0;}
+  .next-btn{width:100%;padding:14px;font-size:16px;font-weight:700;border:none;border-radius:13px;
+    cursor:pointer;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;
+    font-family:inherit;transition:.18s;}
+  .next-btn:hover{filter:brightness(1.12);}
+  .btn-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+  /* ---------- 排行榜 / 成绩表 / 玩家 ---------- */
+  .filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+  .chip{padding:6px 13px;border-radius:99px;font-size:12px;cursor:pointer;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+    color:#94a3b8;font-family:inherit;transition:.15s;}
+  .chip.on{background:rgba(96,165,250,.18);border-color:#60a5fa;color:#bfdbfe;}
+
+  .rank-list,.score-list,.player-list{display:flex;flex-direction:column;gap:8px;
+    max-height:60vh;overflow-y:auto;padding-right:2px;}
+  .rank-row{display:grid;grid-template-columns:34px 1fr auto auto;gap:9px;
+    align-items:center;padding:11px 13px;background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.07);border-radius:12px;font-size:14px;}
+  .rank-row.top1{border-color:rgba(250,204,21,.45);background:rgba(250,204,21,.08);}
+  .rank-row.top2{border-color:rgba(203,213,225,.35);background:rgba(203,213,225,.06);}
+  .rank-row.top3{border-color:rgba(251,146,60,.35);background:rgba(251,146,60,.06);}
+  .rank-no{font-size:14px;font-weight:800;text-align:center;color:#94a3b8;}
+  .rank-nick{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rank-tag{font-size:11px;color:#94a3b8;white-space:nowrap;}
+  .rank-score{font-size:16px;font-weight:800;color:#fbbf24;
+    font-variant-numeric:tabular-nums;min-width:44px;text-align:right;}
+
+  .score-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:11px 13px;background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.07);border-radius:12px;}
+  .sr-left{min-width:0;}
+  .sr-main{font-size:13px;font-weight:700;}
+  .sr-sub{font-size:11px;color:#94a3b8;margin-top:3px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
+  .sr-score{font-size:16px;font-weight:800;color:#fbbf24;flex-shrink:0;
+    font-variant-numeric:tabular-nums;}
+
+  .player-row{display:flex;align-items:center;gap:10px;padding:11px 13px;
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
+    border-radius:12px;transition:.15s;}
+  .player-row.cur{border-color:#60a5fa;background:rgba(96,165,250,.1);}
+  .pr-name{font-weight:700;font-size:14px;flex:1;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
+  .pr-stat{font-size:11px;color:#94a3b8;}
+  .pr-actions{display:flex;gap:6px;flex-shrink:0;}
+
+  .add-row{display:flex;gap:8px;margin-top:12px;}
+  .add-row input{flex:1;padding:12px 14px;font-size:14px;background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.12);border-radius:12px;color:#fff;outline:none;
+    font-family:inherit;}
+  .add-row input:focus{border-color:#60a5fa;}
+  .add-row button{padding:0 18px;border-radius:12px;border:none;cursor:pointer;
+    background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;font-weight:700;
+    font-family:inherit;font-size:14px;}
+
+  .empty{text-align:center;color:#64748b;padding:40px 0;font-size:13px;}
+
+  .duel-setup-row{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;
+    align-items:center;margin-bottom:14px;}
+  .duel-setup-row input{padding:12px 14px;font-size:14px;background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.12);border-radius:12px;color:#fff;outline:none;
+    font-family:inherit;text-align:center;min-width:0;}
+  .duel-setup-row input:focus{border-color:#60a5fa;}
+  .vs{font-weight:800;color:#f472b6;font-size:15px;}
+</style>
+</head>
+<body>
+
+<!-- ========== 菜单 ========== -->
+<section id="menu" class="screen active">
+  <h1 class="title">单词跑酷</h1>
+  <p class="subtitle">拼对加速 · 拼错减速 · 每关 5 词 · 共 10 关</p>
+
+  <div class="player-bar">
+    <div class="avatar" id="menuAvatar">玩</div>
+    <div style="flex:1;min-width:0">
+      <div class="player-label">当前玩家</div>
+      <div class="player-nick" id="nickDisplay">玩家1</div>
+    </div>
+    <button class="mini-btn" id="switchPlayerBtn">切换</button>
+  </div>
+
+  <div class="difficulties">
+    <button class="diff-card" data-diff="peace">
+      <span class="diff-name">和 平</span>
+      <span class="diff-desc">单词较为简单</span>
+      <span class="diff-progress"></span>
+    </button>
+    <button class="diff-card" data-diff="easy">
+      <span class="diff-name">简 单</span>
+      <span class="diff-desc">单词难度一般</span>
+      <span class="diff-progress"></span>
+    </button>
+    <button class="diff-card" data-diff="normal">
+      <span class="diff-name">普 通</span>
+      <span class="diff-desc">单词较难</span>
+      <span class="diff-progress"></span>
+    </button>
+    <button class="diff-card" data-diff="hard">
+      <span class="diff-name">困 难</span>
+      <span class="diff-desc">单词非常难</span>
+      <span class="diff-progress"></span>
+    </button>
+  </div>
+
+  <div class="menu-actions">
+    <button class="ghost-btn primary" id="duelBtn">⚔️ 双人竞速</button>
+    <button class="ghost-btn" id="playersBtn">👥 玩家管理</button>
+    <button class="ghost-btn" id="lbBtn">🏆 排行榜</button>
+    <button class="ghost-btn" id="stBtn">📊 成绩表</button>
+  </div>
+</section>
+
+<!-- ========== 玩家管理 ========== -->
+<section id="players" class="screen">
+  <div class="topbar">
+    <button class="back-btn" data-back>← 返回</button>
+    <h2 class="page-title">👥 玩家管理</h2>
+    <span class="spacer"></span>
+  </div>
+  <p class="page-sub">所有玩家共用本机记录，点击即可切换当前玩家</p>
+  <div class="player-list" id="playerList"></div>
+  <div class="add-row">
+    <input id="newPlayerName" type="text" maxlength="12" placeholder="输入新玩家昵称…">
+    <button id="addPlayerBtn">添加</button>
+  </div>
+</section>
+
+<!-- ========== 双人竞速设置 ========== -->
+<section id="duelSetup" class="screen">
+  <div class="topbar">
+    <button class="back-btn" data-back>← 返回</button>
+    <h2 class="page-title">⚔️ 双人竞速</h2>
+    <span class="spacer"></span>
+  </div>
+  <p class="page-sub">同屏对战 · 先跑完 100m 者获胜 · 同设备轮流或同时操作</p>
+
+  <div class="duel-setup-row">
+    <input id="duelName1" type="text" maxlength="12" placeholder="玩家 1">
+    <span class="vs">VS</span>
+    <input id="duelName2" type="text" maxlength="12" placeholder="玩家 2">
+  </div>
+
+  <p class="page-sub" style="margin-bottom:8px">选择难度</p>
+  <div class="difficulties" id="duelDiffs">
+    <button class="diff-card" data-diff="peace">
+      <span class="diff-name">和 平</span>
+      <span class="diff-desc">单词较为简单</span>
+      <span class="diff-progress"></span>
+    </button>
+    <button class="diff-card" data-diff="easy">
+      <span class="diff-name">简 单</span>
+      <span class="diff-desc">单词难度一般</span>
+      <span class="diff-progress"></span>
+    </button>
+    <button class="diff-card" data-diff="normal">
+      <span class="diff-name">普 通</span>
+      <span class="diff-desc">单词较难</span>
+      <span class="diff-progress"></span>
+    </button>
+    <button class="diff-card" data-diff="hard">
+      <span class="diff-name">困 难</span>
+      <span class="diff-desc">单词非常难</span>
+      <span class="diff-progress"></span>
+    </button>
+  </div>
+
+  <button class="next-btn" id="duelStartBtn" style="margin-top:14px">开始对战 →</button>
+</section>
+
+<!-- ========== 单人游戏 ========== -->
+<section id="game" class="screen">
+  <div class="topbar">
+    <button class="back-btn" id="backBtn">← 返回</button>
+    <div class="level-info">
+      <span class="dn" id="diffLabel"></span>· 第 <span id="levelNum">1</span> / 10 关
+      <span class="dots" id="levelDots"></span>
+    </div>
+  </div>
+
+  <div class="runner-wrap">
+    <canvas id="runnerCanvas"></canvas>
+    <div class="speed-badge">速度 <b id="speedNum">30</b> km/h</div>
+  </div>
+  <div class="speed-bar"><div class="speed-fill" id="speedFill"></div></div>
+
+  <div class="word-card">
+    <div class="zh" id="zhText"></div>
+    <div class="hint" id="hintText"></div>
+  </div>
+
+  <input id="answerInput" class="answer" type="text" autocomplete="off" autocorrect="off"
+         autocapitalize="off" spellcheck="false" placeholder="输入英文拼写…">
+
+  <div class="feedback" id="feedback"></div>
+
+  <button class="submit-btn" id="submitBtn">提 交</button>
+</section>
+
+<!-- ========== 双人游戏 ========== -->
+<section id="duel" class="screen">
+  <div class="topbar">
+    <button class="back-btn" id="duelBack">← 退出</button>
+    <div class="level-info"><span class="dn" id="duelDiffLabel"></span>· 双人竞速</div>
+  </div>
+
+  <div class="duel-wrap">
+    <canvas id="duelCanvas"></canvas>
+  </div>
+
+  <div class="duel-panel" id="dpanel1">
+    <div class="dp-head">
+      <span class="dp-name" id="dp1name"></span>
+      <span class="dp-dist" id="dp1dist">0 / 100 m</span>
+    </div>
+    <div class="dp-zh" id="dp1zh"></div>
+    <div class="dp-hint" id="dp1hint"></div>
+    <input id="duelInput1" type="text" autocomplete="off" spellcheck="false" placeholder="玩家1 输入…">
+    <div class="dp-fb" id="dp1fb"></div>
+  </div>
+
+  <div class="duel-panel" id="dpanel2">
+    <div class="dp-head">
+      <span class="dp-name" id="dp2name"></span>
+      <span class="dp-dist" id="dp2dist">0 / 100 m</span>
+    </div>
+    <div class="dp-zh" id="dp2zh"></div>
+    <div class="dp-hint" id="dp2hint"></div>
+    <input id="duelInput2" type="text" autocomplete="off" spellcheck="false" placeholder="玩家2 输入…">
+    <div class="dp-fb" id="dp2fb"></div>
+  </div>
+</section>
+
+<!-- ========== 单人结算 ========== -->
+<section id="result" class="screen">
+  <div class="result-icon" id="resultIcon">🎉</div>
+  <h2 class="result-title" id="resultTitle"></h2>
+  <div class="result-stats" id="resultStats"></div>
+  <p class="result-text" id="resultText"></p>
+  <button class="next-btn" id="nextBtn">下一关 →</button>
+</section>
+
+<!-- ========== 双人结算 ========== -->
+<section id="duelResult" class="screen">
+  <div class="result-icon" id="drIcon">🏁</div>
+  <h2 class="result-title" id="drTitle"></h2>
+  <div class="result-stats" id="drStats"></div>
+  <p class="result-text" id="drText"></p>
+  <div class="btn-row">
+    <button class="next-btn" id="drAgainBtn" style="background:rgba(255,255,255,.08)">再来一局</button>
+    <button class="next-btn" id="drHomeBtn">返回主页</button>
+  </div>
+</section>
+
+<!-- ========== 排行榜 ========== -->
+<section id="leaderboard" class="screen">
+  <div class="topbar">
+    <button class="back-btn" data-back>← 返回</button>
+    <h2 class="page-title">🏆 排行榜</h2>
+    <span class="spacer"></span>
+  </div>
+  <div class="filter-row">
+    <button class="chip on" data-lb="all">全部玩家</button>
+    <button class="chip" data-lb="me">仅当前玩家</button>
+  </div>
+  <div class="rank-list" id="lbList"></div>
+</section>
+
+<!-- ========== 成绩表 ========== -->
+<section id="scores" class="screen">
+  <div class="topbar">
+    <button class="back-btn" data-back>← 返回</button>
+    <h2 class="page-title">📊 成绩表</h2>
+    <span class="spacer"></span>
+  </div>
+  <div class="filter-row">
+    <button class="chip on" data-st="all">全部玩家</button>
+    <button class="chip" data-st="me">仅当前玩家</button>
+  </div>
+  <div class="score-list" id="scoreList"></div>
+</section>
+
+<script>
+/* ============================================================
+   词库：每个难度 50 个词 = 10 关 × 5 词
+   ============================================================ */
+const WORDS = {
+  peace: [
+    {en:'cat',zh:'猫'},{en:'dog',zh:'狗'},{en:'sun',zh:'太阳'},{en:'cup',zh:'杯子'},
+    {en:'bed',zh:'床'},{en:'red',zh:'红色'},{en:'box',zh:'盒子'},{en:'egg',zh:'鸡蛋'},
+    {en:'fish',zh:'鱼'},{en:'book',zh:'书'},{en:'tree',zh:'树'},{en:'milk',zh:'牛奶'},
+    {en:'rain',zh:'雨'},{en:'blue',zh:'蓝色'},{en:'hand',zh:'手'},{en:'bird',zh:'鸟'},
+    {en:'cake',zh:'蛋糕'},{en:'door',zh:'门'},{en:'moon',zh:'月亮'},{en:'star',zh:'星星'},
+    {en:'car',zh:'汽车'},{en:'hat',zh:'帽子'},{en:'key',zh:'钥匙'},{en:'pen',zh:'钢笔'},
+    {en:'run',zh:'跑'},{en:'jump',zh:'跳'},{en:'walk',zh:'走'},{en:'happy',zh:'快乐的'},
+    {en:'water',zh:'水'},{en:'apple',zh:'苹果'},{en:'bread',zh:'面包'},{en:'chair',zh:'椅子'},
+    {en:'green',zh:'绿色'},{en:'house',zh:'房子'},{en:'light',zh:'光'},{en:'music',zh:'音乐'},
+    {en:'night',zh:'夜晚'},{en:'paper',zh:'纸'},{en:'river',zh:'河流'},{en:'school',zh:'学校'},
+    {en:'shoes',zh:'鞋子'},{en:'sleep',zh:'睡觉'},{en:'smile',zh:'微笑'},{en:'table',zh:'桌子'},
+    {en:'watch',zh:'手表'},{en:'white',zh:'白色'},{en:'window',zh:'窗户'},{en:'yellow',zh:'黄色'},
+    {en:'friend',zh:'朋友'},{en:'garden',zh:'花园'}
+  ],
+  easy: [
+    {en:'airplane',zh:'飞机'},{en:'bridge',zh:'桥'},{en:'monkey',zh:'猴子'},{en:'teacher',zh:'老师'},
+    {en:'orange',zh:'橙子'},{en:'pencil',zh:'铅笔'},{en:'winter',zh:'冬天'},{en:'summer',zh:'夏天'},
+    {en:'holiday',zh:'假期'},{en:'morning',zh:'早晨'},{en:'kitchen',zh:'厨房'},{en:'machine',zh:'机器'},
+    {en:'picture',zh:'图片'},{en:'present',zh:'礼物'},{en:'station',zh:'车站'},{en:'weather',zh:'天气'},
+    {en:'animal',zh:'动物'},{en:'bicycle',zh:'自行车'},{en:'blanket',zh:'毯子'},{en:'century',zh:'世纪'},
+    {en:'chicken',zh:'鸡'},{en:'country',zh:'国家'},{en:'diamond',zh:'钻石'},{en:'doctor',zh:'医生'},
+    {en:'evening',zh:'傍晚'},{en:'factory',zh:'工厂'},{en:'festival',zh:'节日'},{en:'forest',zh:'森林'},
+    {en:'hospital',zh:'医院'},{en:'island',zh:'岛屿'},{en:'journey',zh:'旅程'},{en:'library',zh:'图书馆'},
+    {en:'market',zh:'市场'},{en:'mountain',zh:'山'},{en:'notebook',zh:'笔记本'},{en:'palace',zh:'宫殿'},
+    {en:'planet',zh:'行星'},{en:'promise',zh:'承诺'},{en:'question',zh:'问题'},{en:'sandwich',zh:'三明治'},
+    {en:'science',zh:'科学'},{en:'silence',zh:'沉默'},{en:'soldier',zh:'士兵'},{en:'special',zh:'特别的'},
+    {en:'student',zh:'学生'},{en:'treasure',zh:'宝藏'},{en:'village',zh:'村庄'},{en:'wedding',zh:'婚礼'},
+    {en:'whisper',zh:'低语'},{en:'yesterday',zh:'昨天'}
+  ],
+  normal: [
+    {en:'ancient',zh:'古老的'},{en:'benefit',zh:'益处'},{en:'curious',zh:'好奇的'},{en:'deliver',zh:'递送'},
+    {en:'emotion',zh:'情感'},{en:'fortune',zh:'财富；运气'},{en:'gather',zh:'聚集'},{en:'harbor',zh:'港口'},
+    {en:'improve',zh:'改善'},{en:'justice',zh:'正义'},{en:'kingdom',zh:'王国'},{en:'lecture',zh:'讲座'},
+    {en:'measure',zh:'测量'},{en:'nervous',zh:'紧张的'},{en:'observe',zh:'观察'},{en:'patient',zh:'耐心的'},
+    {en:'qualify',zh:'使合格'},{en:'reduce',zh:'减少'},{en:'satisfy',zh:'使满意'},{en:'thunder',zh:'雷声'},
+    {en:'unusual',zh:'不寻常的'},{en:'various',zh:'各种各样的'},{en:'witness',zh:'目击者'},{en:'absence',zh:'缺席'},
+    {en:'balance',zh:'平衡'},{en:'capture',zh:'捕获'},{en:'declare',zh:'宣布'},{en:'elegant',zh:'优雅的'},
+    {en:'finance',zh:'金融'},{en:'genuine',zh:'真诚的'},{en:'hesitate',zh:'犹豫'},{en:'identify',zh:'识别'},
+    {en:'judgment',zh:'判断'},{en:'luggage',zh:'行李'},{en:'mystery',zh:'谜'},{en:'negotiate',zh:'谈判'},
+    {en:'obvious',zh:'明显的'},{en:'persuade',zh:'说服'},{en:'quantity',zh:'数量'},{en:'remedy',zh:'补救'},
+    {en:'schedule',zh:'日程安排'},{en:'shelter',zh:'避难所'},{en:'tragedy',zh:'悲剧'},{en:'universe',zh:'宇宙'},
+    {en:'venture',zh:'冒险'},{en:'worship',zh:'崇拜'},{en:'accurate',zh:'准确的'},{en:'boundary',zh:'边界'},
+    {en:'ceremony',zh:'仪式'},{en:'discount',zh:'折扣'}
+  ],
+  hard: [
+    {en:'ambiguous',zh:'模棱两可的'},{en:'benevolent',zh:'仁慈的'},{en:'catastrophe',zh:'灾难'},
+    {en:'deteriorate',zh:'恶化'},{en:'eloquent',zh:'雄辩的'},{en:'formidable',zh:'令人敬畏的'},
+    {en:'hypothesis',zh:'假设'},{en:'inevitable',zh:'不可避免的'},{en:'jeopardize',zh:'危及'},
+    {en:'labyrinth',zh:'迷宫'},{en:'meticulous',zh:'一丝不苟的'},{en:'notorious',zh:'臭名昭著的'},
+    {en:'obsolete',zh:'过时的'},{en:'paradox',zh:'悖论'},{en:'quintessential',zh:'典型的'},
+    {en:'resilient',zh:'有韧性的'},{en:'scrutinize',zh:'仔细检查'},{en:'tenacious',zh:'顽强的'},
+    {en:'ubiquitous',zh:'无处不在的'},{en:'vulnerable',zh:'脆弱的'},{en:'whimsical',zh:'异想天开的'},
+    {en:'zealous',zh:'狂热的'},{en:'aberration',zh:'反常现象'},{en:'camouflage',zh:'伪装'},
+    {en:'discrepancy',zh:'差异'},{en:'exacerbate',zh:'加剧'},{en:'facilitate',zh:'促进'},
+    {en:'gratuitous',zh:'无端的'},{en:'impeccable',zh:'无瑕疵的'},{en:'juxtapose',zh:'并列'},
+    {en:'magnanimous',zh:'宽宏大量的'},{en:'obfuscate',zh:'使模糊'},{en:'pernicious',zh:'有害的'},
+    {en:'quandary',zh:'困境'},{en:'reciprocity',zh:'互惠'},{en:'spontaneous',zh:'自发的'},
+    {en:'superfluous',zh:'多余的'},{en:'treacherous',zh:'背信弃义的'},{en:'unprecedented',zh:'前所未有的'},
+    {en:'vicissitude',zh:'变迁'},{en:'acquiesce',zh:'默许'},{en:'belligerent',zh:'好斗的'},
+    {en:'clandestine',zh:'秘密的'},{en:'ephemeral',zh:'短暂的'},{en:'fastidious',zh:'挑剔的'},
+    {en:'gregarious',zh:'群居的'},{en:'harbinger',zh:'预兆'},{en:'idiosyncrasy',zh:'个人特质'},
+    {en:'lamentable',zh:'可悲的'},{en:'metamorphosis',zh:'蜕变'}
+  ]
+};
+
+const DIFFS = {
+  peace:  {name:'和平', color:'#4ade80'},
+  easy:   {name:'简单', color:'#60a5fa'},
+  normal: {name:'普通', color:'#fbbf24'},
+  hard:   {name:'困难', color:'#f87171'}
+};
+
+const WORDS_PER_LEVEL = 5;
+const LEVELS_PER_DIFF = 10;
+const BASE_SPEED = 30;
+const MAX_SPEED  = 100;
+const DUEL_GOAL  = 100;
+
+/* ---------------- 工具 ---------------- */
+const $ = id => document.getElementById(id);
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+  ));
+}
+
+/* ---------------- 存储 ---------------- */
+function safeGet(k, fb){
+  try { const v = localStorage.getItem(k); return v === null ? fb : v; }
+  catch(e){ return fb; }
+}
+function safeSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+function safeJSON(k, fb){
+  try {
+    const v = localStorage.getItem(k);
+    if (v === null) return fb;
+    const p = JSON.parse(v);
+    return p === null || p === undefined ? fb : p;
+  } catch(e){ return fb; }
+}
+
+const SCORE_KEY  = 'wg_scores';
+const NICK_KEY   = 'wg_nick';
+const PLAYERS_KEY= 'wg_players';
+const CURRENT_KEY= 'wg_current_player';
+
+function loadScores(){ const a = safeJSON(SCORE_KEY, []); return Array.isArray(a) ? a : []; }
+function saveScores(a){ safeSet(SCORE_KEY, JSON.stringify(a)); }
+function recordScore(entry){
+  const all = loadScores();
+  all.push(entry);
+  if (all.length > 400) all.splice(0, all.length - 400);
+  saveScores(all);
+}
+
+function loadPlayers(){
+  const p = safeJSON(PLAYERS_KEY, null);
+  if (Array.isArray(p) && p.length) return p;
+  const init = [{ id:'p' + Date.now().toString(36), name:'玩家1' }];
+  safeSet(PLAYERS_KEY, JSON.stringify(init));
+  safeSet(CURRENT_KEY, init[0].id);
+  return init;
+}
+function savePlayers(list){ safeSet(PLAYERS_KEY, JSON.stringify(list)); }
+
+function getCurrentPlayerId(){
+  const id = safeGet(CURRENT_KEY, '');
+  const list = loadPlayers();
+  if (id && list.some(p => p.id === id)) return id;
+  return list[0].id;
+}
+function setCurrentPlayerId(id){ safeSet(CURRENT_KEY, id); }
+function getCurrentPlayer(){
+  const id = getCurrentPlayerId();
+  return loadPlayers().find(p => p.id === id) || { id, name:'玩家1' };
+}
+
+/* ---------------- 单人状态 ---------------- */
+const state = {
+  diff: null,
+  level: 0,
+  deck: [],
+  queue: [],
+  current: null,
+  mastered: 0,
+  mistakes: 0,
+  locked: false,
+  speed: BASE_SPEED,
+  targetSpeed: BASE_SPEED,
+  bestSpeed: BASE_SPEED,
+  speedSum: 0,
+  speedFrames: 0,
+  levelStart: 0,
+  lastEntry: null
+};
+
+/* ---------------- 双人状态 ---------------- */
+const duel = {
+  diff: null,
+  active: false,
+  over: false,
+  pool: [],
+  players: [],
+  startTime: 0
+};
+
+/* ---------------- 场景（单/双共用） ---------------- */
+const scene = {
+  time: 0,
+  offsetGround: 0,
+  offsetTrees: 0,
+  offsetClouds: 0,
+  particles: [],
+  flash: 0,
+  boost: 0,
+  speed: BASE_SPEED
+};
+
+function groundYOf(H){ return H - 42; }
+function accentColor(){
+  return DIFFS[state.diff] ? DIFFS[state.diff].color : '#60a5fa';
+}
+
+/* ---------------- 画布 ---------------- */
+const singleCanvas = $('runnerCanvas');
+const singleCtx = singleCanvas.getContext('2d');
+const duelCanvas = $('duelCanvas');
+const duelCtx = duelCanvas.getContext('2d');
+
+let singleW = 0, singleH = 0;
+let duelW = 0, duelH = 0;
+
+function fitCanvas(canvas, ctx, w, h){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function resizeSingle(){
+  const r = singleCanvas.parentElement.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  singleW = r.width; singleH = r.height;
+  fitCanvas(singleCanvas, singleCtx, singleW, singleH);
+}
+function resizeDuel(){
+  const r = duelCanvas.parentElement.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  duelW = r.width; duelH = r.height;
+  fitCanvas(duelCanvas, duelCtx, duelW, duelH);
+}
+
+/* ---------------- 背景绘制（通用） ---------------- */
+function drawSky(ctx, W, H){
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#16233a');
+  g.addColorStop(1, '#0b1120');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+function drawClouds(ctx, W){
+  const spacing = 240;
+  const base = -(scene.offsetClouds % spacing);
+  ctx.fillStyle = 'rgba(255,255,255,.10)';
+  for (let i = 0; i < Math.ceil(W / spacing) + 2; i++){
+    const x = base + i * spacing;
+    const y = 26 + (i % 3) * 16;
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.arc(x + 20, y + 5, 12, 0, Math.PI * 2);
+    ctx.arc(x - 18, y + 6, 10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+function drawHills(ctx, W, gy){
+  const off = scene.offsetTrees * 0.3;
+  ctx.fillStyle = 'rgba(255,255,255,.045)';
+  ctx.beginPath();
+  ctx.moveTo(0, gy);
+  for (let x = 0; x <= W; x += 8){
+    const y = gy - 58 - Math.sin((x + off) * 0.008) * 30
+                      - Math.sin((x + off) * 0.021) * 11;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(W, gy);
+  ctx.closePath();
+  ctx.fill();
+}
+function drawTree(ctx, x, gy, s){
+  ctx.fillStyle = 'rgba(255,255,255,.075)';
+  ctx.fillRect(x - 2.5 * s, gy - 30 * s, 5 * s, 30 * s);
+  ctx.beginPath();
+  ctx.moveTo(x, gy - 78 * s);
+  ctx.lineTo(x - 24 * s, gy - 30 * s);
+  ctx.lineTo(x + 24 * s, gy - 30 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x, gy - 58 * s);
+  ctx.lineTo(x - 19 * s, gy - 16 * s);
+  ctx.lineTo(x + 19 * s, gy - 16 * s);
+  ctx.closePath();
+  ctx.fill();
+}
+function drawTrees(ctx, W, gy){
+  const spacing = 170;
+  const base = -(scene.offsetTrees % spacing);
+  for (let i = 0; i < Math.ceil(W / spacing) + 2; i++){
+    const x = base + i * spacing + 45;
+    const s = 0.75 + ((i * 37) % 10) / 16;
+    drawTree(ctx, x, gy, s);
+  }
+}
+function drawGround(ctx, W, H, gy, accent){
+  ctx.fillStyle = 'rgba(0,0,0,.38)';
+  ctx.fillRect(0, gy, W, H - gy);
+
+  ctx.strokeStyle = 'rgba(255,255,255,.13)';
+  ctx.lineWidth = 2;
+  const spacing = 62;
+  const base = -(scene.offsetGround % spacing);
+  ctx.beginPath();
+  for (let i = 0; i < Math.ceil(W / spacing) + 2; i++){
+    const x = base + i * spacing;
+    ctx.moveTo(x, gy + 3);
+    ctx.lineTo(x - 38, H);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = accent;
+  ctx.globalAlpha = .55;
+  ctx.fillRect(0, gy - 2, W, 3);
+  ctx.globalAlpha = 1;
+}
+
+/* ---------------- 角色绘制（修正版跑步姿势）----------------
+   朝向右侧奔跑：
+   - 支撑相：脚从身体前方扫向后方（与背景左移方向一致）
+   - 摆动相：腿弯曲，脚从后向前抬回
+   - 手臂与同侧腿反相摆动，肘部弯曲
+------------------------------------------------------------ */
+function drawLeg(ctx, phase, hipX, hipY, thighLen, shinLen, amp){
+  const swing = Math.sin(phase) * amp;
+  const backness = Math.max(0, -Math.sin(phase));
+  const bend = 0.06 + backness * 1.15;
+
+  const kneeX = hipX + Math.sin(swing) * thighLen;
+  const kneeY = hipY + Math.cos(swing) * thighLen;
+
+  const shinAng = swing - bend;
+  const footX = kneeX + Math.sin(shinAng) * shinLen;
+  const footY = kneeY + Math.cos(shinAng) * shinLen;
+
+  ctx.beginPath();
+  ctx.moveTo(hipX, hipY);
+  ctx.lineTo(kneeX, kneeY);
+  ctx.lineTo(footX, footY);
+  ctx.stroke();
+}
+
+function drawArm(ctx, phase, sx, sy, upperLen, foreLen, amp){
+  const swing = Math.sin(phase) * amp;
+  const elbowBend = 1.15;
+
+  const elbowX = sx + Math.sin(swing) * upperLen;
+  const elbowY = sy + Math.cos(swing) * upperLen;
+
+  const foreAng = swing + elbowBend;
+  const handX = elbowX + Math.sin(foreAng) * foreLen;
+  const handY = elbowY + Math.cos(foreAng) * foreLen;
+
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(elbowX, elbowY);
+  ctx.lineTo(handX, handY);
+  ctx.stroke();
+}
+
+/* 参数化的跑者绘制 */
+function drawRunnerAt(ctx, cx, gy, speedVal, timeVal, accent, scale){
+  scale = scale || 1;
+  const v = speedVal;
+
+  const hipX = cx;
+  const hipY = gy - 34 * scale;
+
+  const lean = 0.10 + Math.min(v, 100) * 0.004;
+  const torsoLen = 26 * scale;
+  const shoulderX = hipX + Math.sin(lean) * torsoLen;
+  const shoulderY = hipY - Math.cos(lean) * torsoLen;
+
+  const neckLen = 9 * scale;
+  const headX = shoulderX + Math.sin(lean) * neckLen;
+  const headY = shoulderY - Math.cos(lean) * neckLen;
+
+  const phase = timeVal * (9 + v * 0.16);
+
+  // 影子
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  ctx.beginPath();
+  ctx.ellipse(cx + 2, gy + 3, 24 * scale, 6 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 速度线
+  if (v > 42){
+    const n = Math.min(6, Math.floor((v - 42) / 10) + 1);
+    ctx.strokeStyle = `rgba(255,255,255,${0.07 + (v - 42) / 900})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < n; i++){
+      const ly = headY + 4 + i * 13 + Math.sin(timeVal * 7 + i) * 3;
+      const len = (26 + (i % 3) * 20) * scale;
+      const lx = cx - 34 - i * 8;
+      ctx.beginPath();
+      ctx.moveTo(lx, ly);
+      ctx.lineTo(lx - len, ly);
+      ctx.stroke();
+    }
+  }
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = accent;
+
+  const thighLen = 15 * scale, shinLen = 15 * scale;
+  const upperLen = 12 * scale, foreLen = 11 * scale;
+
+  // 远侧腿
+  ctx.lineWidth = 5 * scale;
+  ctx.globalAlpha = 0.38;
+  drawLeg(ctx, phase + Math.PI, hipX, hipY, thighLen, shinLen, 0.62);
+  ctx.globalAlpha = 1;
+
+  // 远侧臂
+  ctx.lineWidth = 4 * scale;
+  ctx.globalAlpha = 0.38;
+  drawArm(ctx, phase, shoulderX, shoulderY, upperLen, foreLen, 0.80);
+  ctx.globalAlpha = 1;
+
+  // 躯干
+  ctx.lineWidth = 6 * scale;
+  ctx.beginPath();
+  ctx.moveTo(hipX, hipY);
+  ctx.lineTo(shoulderX, shoulderY);
+  ctx.stroke();
+
+  // 近侧腿
+  ctx.lineWidth = 5 * scale;
+  drawLeg(ctx, phase, hipX, hipY, thighLen, shinLen, 0.62);
+
+  // 近侧臂
+  ctx.lineWidth = 4 * scale;
+  drawArm(ctx, phase + Math.PI, shoulderX, shoulderY, upperLen, foreLen, 0.80);
+
+  // 头
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.arc(headX, headY, 8.5 * scale, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 眼睛
+  ctx.fillStyle = 'rgba(255,255,255,.9)';
+  ctx.beginPath();
+  ctx.arc(headX + Math.cos(lean) * 5.5 * scale,
+          headY + Math.sin(lean) * 5.5 * scale - 1.8 * scale,
+          1.9 * scale, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/* ---------------- 粒子 ---------------- */
+function spawnParticles(x, y, color, count, spreadX, spreadY){
+  for (let i = 0; i < count; i++){
+    scene.particles.push({
+      x: x + (Math.random() - 0.5) * 16,
+      y: y + (Math.random() - 0.5) * 8,
+      vx: -Math.random() * spreadX - 25,
+      vy: -Math.random() * spreadY,
+      life: 1,
+      color: color,
+      size: 2 + Math.random() * 3
+    });
+  }
+}
+function updateParticles(dt){
+  for (let i = scene.particles.length - 1; i >= 0; i--){
+    const p = scene.particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 520 * dt;
+    p.life -= dt * 1.5;
+    if (p.life <= 0) scene.particles.splice(i, 1);
+  }
+}
+function drawParticles(ctx){
+  for (const p of scene.particles){
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---------------- 单人场景绘制 ---------------- */
+function drawSingle(){
+  const ctx = singleCtx, W = singleW, H = singleH;
+  const gy = groundYOf(H);
+  const accent = accentColor();
+
+  drawSky(ctx, W, H);
+  drawClouds(ctx, W);
+  drawHills(ctx, W, gy);
+  drawTrees(ctx, W, gy);
+  drawGround(ctx, W, H, gy, accent);
+
+  drawRunnerAt(ctx, W * 0.24, gy, state.speed, scene.time, accent, 1);
+  drawParticles(ctx);
+
+  if (scene.flash > 0){
+    ctx.fillStyle = `rgba(248,113,113,${scene.flash * 0.30})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (scene.boost > 0){
+    const grd = ctx.createRadialGradient(W * 0.24, gy - 32, 6, W * 0.24, gy - 32, 130);
+    grd.addColorStop(0, `rgba(74,222,128,${scene.boost * 0.30})`);
+    grd.addColorStop(1, 'rgba(74,222,128,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+/* ---------------- 双人场景绘制 ---------------- */
+function drawDuelScene(){
+  const ctx = duelCtx, W = duelW, H = duelH;
+  if (!W || !H) return;
+
+  const accent = DIFFS[duel.diff] ? DIFFS[duel.diff].color : '#60a5fa';
+  const gy1 = H * 0.30;
+  const gy2 = H * 0.78;
+
+  drawSky(ctx, W, H);
+  drawClouds(ctx, W);
+  drawHills(ctx, W, gy1);
+  drawTrees(ctx, W, gy1);
+
+  // 两条跑道
+  drawGround(ctx, W, H, gy1, accent);
+  // 第二条跑道只画地面线，避免覆盖
+  ctx.fillStyle = 'rgba(0,0,0,.30)';
+  ctx.fillRect(0, gy2, W, H - gy2);
+  ctx.fillStyle = accent;
+  ctx.globalAlpha = .45;
+  ctx.fillRect(0, gy2 - 2, W, 3);
+  ctx.globalAlpha = 1;
+
+  // 终点线
+  const endX = W - 34;
+  [gy1, gy2].forEach(gy => {
+    ctx.strokeStyle = 'rgba(255,255,255,.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(endX, gy);
+    ctx.lineTo(endX, gy - 40);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // 旗子
+    ctx.fillStyle = '#f472b6';
+    ctx.beginPath();
+    ctx.moveTo(endX, gy - 40);
+    ctx.lineTo(endX + 18, gy - 34);
+    ctx.lineTo(endX, gy - 28);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  // 跑者
+  const startX = 30;
+  duel.players.forEach((p, i) => {
+    const gy = i === 0 ? gy1 : gy2;
+    const t = Math.max(0, Math.min(1, p.distance / DUEL_GOAL));
+    const x = startX + (endX - startX) * t;
+    drawRunnerAt(ctx, x, gy, p.speed, scene.time + i * 0.37, p.color, 0.85);
+  });
+
+  drawParticles(ctx);
+}
+
+/* ---------------- 主循环 ---------------- */
+let loopRunning = false;
+let loopMode = null;
+let lastTs = 0;
+
+function loop(ts){
+  if (!loopRunning) return;
+  if (!lastTs) lastTs = ts;
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+
+  scene.time += dt;
+
+  // 场景速度
+  if (loopMode === 'single'){
+    state.speed += (state.targetSpeed - state.speed) * Math.min(1, dt * 5);
+    scene.speed = state.speed;
+  } else if (loopMode === 'duel'){
+    let sum = 0;
+    duel.players.forEach(p => {
+      p.speed += (p.targetSpeed - p.speed) * Math.min(1, dt * 6);
+      sum += p.speed;
+    });
+    scene.speed = duel.players.length ? sum / duel.players.length : BASE_SPEED;
+  }
+
+  const v = scene.speed;
+  const pxPerSec = 40 + v * 3.4;
+  scene.offsetGround = (scene.offsetGround + pxPerSec * dt) % 1000;
+  scene.offsetTrees  = (scene.offsetTrees  + pxPerSec * 0.45 * dt) % 1000;
+  scene.offsetClouds = (scene.offsetClouds + pxPerSec * 0.12 * dt) % 1000;
+
+  if (loopMode === 'single'){
+    if (v > 55 && Math.random() < (v - 55) / 260){
+      spawnParticles(singleW * 0.24 - 12, groundYOf(singleH), 'rgba(255,255,255,.5)', 1, 60, 90);
+    }
+    state.bestSpeed = Math.max(state.bestSpeed, v);
+    state.speedSum += v;
+    state.speedFrames++;
+    $('speedNum').textContent = Math.round(v);
+    const fill = $('speedFill');
+    fill.style.width = v + '%';
+    fill.style.background = `hsl(${210 - v * 2.1},90%,58%)`;
+  }
+
+  updateParticles(dt);
+  scene.flash = Math.max(0, scene.flash - dt * 2.6);
+  scene.boost = Math.max(0, scene.boost - dt * 1.6);
+
+  if (loopMode === 'single') drawSingle();
+  else if (loopMode === 'duel') drawDuelScene();
+
+  requestAnimationFrame(loop);
+}
+
+function startLoop(mode){
+  loopMode = mode;
+  if (loopRunning) return;
+  loopRunning = true;
+  lastTs = 0;
+  requestAnimationFrame(loop);
+}
+function stopLoop(){
+  loopRunning = false;
+  loopMode = null;
+}
+
+window.addEventListener('resize', () => {
+  if (loopMode === 'single') resizeSingle();
+  else if (loopMode === 'duel') resizeDuel();
+});
+
+/* ---------------- 屏幕切换 ---------------- */
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+  stopLoop();
+
+  if (id === 'game'){
+    resizeSingle();
+    startLoop('single');
+  } else if (id === 'duel'){
+    resizeDuel();
+    startLoop('duel');
+  }
+}
+
+/* ---------------- 单人：菜单 ---------------- */
+function renderMenu(){
+  const prog = safeJSON('wg_progress', {});
+  document.querySelectorAll('#menu .diff-card').forEach(card => {
+    const d = card.dataset.diff;
+    const done = prog[d] || 0;
+    const el = card.querySelector('.diff-progress');
+    if (done >= LEVELS_PER_DIFF) el.textContent = '已通关 ✓';
+    else if (done > 0)           el.textContent = `进度 ${done} / 10`;
+    else                         el.textContent = '未开始';
+  });
+}
+
+function renderCurrentPlayer(){
+  const p = getCurrentPlayer();
+  $('nickDisplay').textContent = p.name;
+  const av = $('menuAvatar');
+  av.textContent = p.name.slice(0, 1).toUpperCase();
+  av.style.background = `hsl(${(p.name.charCodeAt(0) * 37) % 360},70%,62%)`;
+}
+
+document.querySelectorAll('#menu .diff-card').forEach(card => {
+  card.addEventListener('click', () => startDifficulty(card.dataset.diff));
+});
+
+/* ---------------- 单人：开始 ---------------- */
+function startDifficulty(diff){
+  state.diff = diff;
+  const prog = safeJSON('wg_progress', {});
+  let lv = prog[diff] || 0;
+  if (lv >= LEVELS_PER_DIFF) lv = 0;
+  state.level = lv;
+  state.deck = shuffle(WORDS[diff].slice());
+  document.documentElement.style.setProperty('--accent', DIFFS[diff].color);
+  startLevel();
+}
+
+function startLevel(){
+  const start = state.level * WORDS_PER_LEVEL;
+  const words = state.deck.slice(start, start + WORDS_PER_LEVEL);
+
+  state.queue    = shuffle(words.slice());
+  state.current  = null;
+  state.mastered = 0;
+  state.mistakes = 0;
+  state.locked   = false;
+  state.speed       = BASE_SPEED;
+  state.targetSpeed = BASE_SPEED;
+  state.bestSpeed   = BASE_SPEED;
+  state.speedSum    = 0;
+  state.speedFrames = 0;
+  state.levelStart  = Date.now();
+  state.lastEntry   = null;
+
+  scene.particles = [];
+  scene.flash = 0;
+  scene.boost = 0;
+
+  showScreen('game');
+  updateHeader();
+
+  $('feedback').textContent = '';
+  $('feedback').className   = 'feedback';
+
+  nextWord();
+}
+
+function nextWord(){
+  if (state.queue.length === 0) { levelComplete(); return; }
+
+  state.current = state.queue.shift();
+  state.locked  = false;
+
+  const w = state.current;
+  $('zhText').textContent = w.zh;
+  const letters = w.en.split('');
+  $('hintText').textContent =
+    [letters[0], ...Array(letters.length - 1).fill('_')].join(' ') + `（${letters.length} 个字母）`;
+
+  const input = $('answerInput');
+  input.value    = '';
+  input.disabled = false;
+  $('submitBtn').disabled = false;
+  input.focus();
+}
+
+function submitAnswer(){
+  if (state.locked || !state.current) return;
+
+  const input = $('answerInput');
+  const val   = input.value.trim().toLowerCase();
+  if (!val) { shakeInput('answerInput'); return; }
+
+  const answer = state.current.en.toLowerCase();
+  const gy = groundYOf(singleH);
+  const rx = singleW * 0.24;
+
+  if (val === answer) {
+    state.locked = true;
+    state.mastered++;
+
+    input.disabled = true;
+    $('submitBtn').disabled = true;
+
+    state.targetSpeed = Math.min(MAX_SPEED, state.targetSpeed + 18);
+    scene.boost = 1;
+    spawnParticles(rx, gy - 4, '#4ade80', 16, 150, 220);
+
+    const fb = $('feedback');
+    fb.className = 'feedback ok';
+    fb.textContent = '✓ 正确！加速中 🚀';
+
+    updateProgress();
+
+    setTimeout(() => {
+      if (state.queue.length === 0) levelComplete();
+      else nextWord();
+    }, 520);
+
+  } else {
+    state.locked = true;
+    state.mistakes++;
+
+    input.disabled = true;
+    $('submitBtn').disabled = true;
+
+    state.targetSpeed = Math.max(0, state.targetSpeed - 24);
+    scene.flash = 1;
+    spawnParticles(rx, gy - 4, '#f87171', 12, 90, 130);
+
+    const fb = $('feedback');
+    fb.className = 'feedback err';
+    fb.innerHTML = `✗ 正确答案：<b>${state.current.en}</b><br>减速了… 这个词稍后会再考`;
+
+    state.queue.push(state.current);
+    shakeInput('answerInput');
+
+    setTimeout(() => {
+      fb.textContent = '';
+      fb.className   = 'feedback';
+      nextWord();
+    }, 1650);
+  }
+}
+
+function shakeInput(id){
+  const input = $(id);
+  input.classList.remove('shake');
+  void input.offsetWidth;
+  input.classList.add('shake');
+}
+
+function updateHeader(){
+  const d = DIFFS[state.diff];
+  const label = $('diffLabel');
+  label.textContent = d.name;
+  label.style.color = d.color;
+  $('levelNum').textContent = state.level + 1;
+  updateProgress();
+}
+
+function updateProgress(){
+  const dots = $('levelDots');
+  dots.textContent = '●'.repeat(state.mastered) + '○'.repeat(WORDS_PER_LEVEL - state.mastered);
+  dots.style.color = DIFFS[state.diff].color;
+}
+
+function calcSingleScore(elapsed){
+  const base      = 200;
+  const speedPart = Math.round((state.speedFrames ? state.speedSum / state.speedFrames : BASE_SPEED) * 10);
+  const perfect   = state.mistakes === 0 ? 300 : 0;
+  const timeBonus = Math.max(0, Math.round((45 - elapsed) * 3));
+  const penalty   = state.mistakes * 80;
+  return Math.max(0, base + speedPart + perfect + timeBonus - penalty);
+}
+
+function levelComplete(){
+  const elapsed = Math.max(0, (Date.now() - state.levelStart) / 1000);
+  const avg = state.speedFrames ? state.speedSum / state.speedFrames : BASE_SPEED;
+  const score = calcSingleScore(elapsed);
+  const player = getCurrentPlayer();
+
+  const entry = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    playerId: player.id,
+    nick: player.name,
+    mode: 'single',
+    diff: state.diff,
+    level: state.level + 1,
+    score,
+    avgSpeed: Math.round(avg),
+    maxSpeed: Math.round(state.bestSpeed),
+    mistakes: state.mistakes,
+    seconds: Math.round(elapsed * 10) / 10,
+    date: Date.now()
+  };
+  recordScore(entry);
+  state.lastEntry = entry;
+  state.avgSpeed = avg;
+
+  const prog = safeJSON('wg_progress', {});
+  const isLast = state.level >= LEVELS_PER_DIFF - 1;
+
+  if (isLast){
+    prog[state.diff] = LEVELS_PER_DIFF;
+  } else {
+    prog[state.diff] = Math.max(prog[state.diff] || 0, state.level + 1);
+  }
+  safeSet('wg_progress', JSON.stringify(prog));
+
+  showSingleResult(isLast);
+}
+
+function showSingleResult(cleared){
+  showScreen('result');
+  const btn = $('nextBtn');
+  const e = state.lastEntry;
+  const avg = state.avgSpeed || BASE_SPEED;
+
+  $('resultStats').innerHTML = `
+    <div class="rs-item"><span class="rs-label">本关得分</span>
+      <span class="rs-value gold">${e ? e.score : '—'}</span></div>
+    <div class="rs-item"><span class="rs-label">平均速度</span>
+      <span class="rs-value">${Math.round(avg)}</span></div>
+    <div class="rs-item"><span class="rs-label">最高速度</span>
+      <span class="rs-value">${Math.round(state.bestSpeed)}</span></div>
+    <div class="rs-item"><span class="rs-label">答错次数</span>
+      <span class="rs-value">${state.mistakes}</span></div>`;
+
+  if (cleared){
+    $('resultIcon').textContent  = '🏆';
+    $('resultTitle').textContent = `恭喜通关「${DIFFS[state.diff].name}」难度！`;
+    $('resultText').innerHTML =
+      `你完成了全部 ${LEVELS_PER_DIFF} 关，共 ${LEVELS_PER_DIFF * WORDS_PER_LEVEL} 个单词。<br>成绩已记入排行榜。`;
+    btn.textContent = '返回主页';
+    btn.onclick = () => { renderMenu(); renderCurrentPlayer(); showScreen('menu'); };
+  } else {
+    $('resultIcon').textContent  = '🎉';
+    $('resultTitle').textContent = `第 ${state.level + 1} 关通过！`;
+    $('resultText').innerHTML =
+      (state.mistakes === 0 ? '零失误，全程冲刺！' : `答错 ${state.mistakes} 次，错词都已重考通过。`)
+      + `<br>成绩已记入排行榜。`;
+    btn.textContent = '下一关 →';
+    btn.onclick = () => { state.level++; startLevel(); };
+  }
+}
+
+/* ============================================================
+   双人竞速
+   ============================================================ */
+const DUEL_COLORS = ['#60a5fa', '#f472b6'];
+
+let duelSelDiff = 'peace';
+
+document.querySelectorAll('#duelDiffs .diff-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('#duelDiffs .diff-card').forEach(c => c.classList.remove('sel'));
+    card.classList.add('sel');
+    duelSelDiff = card.dataset.diff;
+  });
+});
+// 默认选中第一个
+document.querySelector('#duelDiffs .diff-card').classList.add('sel');
+
+$('duelStartBtn').addEventListener('click', () => {
+  const cur = getCurrentPlayer();
+  const n1 = ($('duelName1').value.trim() || cur.name || '玩家1').slice(0, 12);
+  const n2 = ($('duelName2').value.trim() || '玩家2').slice(0, 12);
+  startDuel(duelSelDiff, n1, n2);
+});
+
+function startDuel(diff, n1, n2){
+  duel.diff = diff;
+  duel.active = true;
+  duel.over = false;
+  duel.startTime = Date.now();
+
+  duel.pool = shuffle(WORDS[diff].slice());
+
+  duel.players = [0, 1].map(i => {
+    const q = shuffle(duel.pool.slice(0, WORDS_PER_LEVEL));
+    return {
+      name: i === 0 ? n1 : n2,
+      color: DUEL_COLORS[i],
+      queue: q,
+      pos: WORDS_PER_LEVEL,
+      current: null,
+      mastered: 0,
+      mistakes: 0,
+      distance: 0,
+      speed: BASE_SPEED,
+      targetSpeed: BASE_SPEED,
+      locked: true,
+      panel: $('dpanel' + (i + 1)),
+      input: $('duelInput' + (i + 1)),
+      zhEl: $('dp' + (i + 1) + 'zh'),
+      hintEl: $('dp' + (i + 1) + 'hint'),
+      fbEl: $('dp' + (i + 1) + 'fb'),
+      distEl: $('dp' + (i + 1) + 'dist'),
+      nameEl: $('dp' + (i + 1) + 'name')
+    };
+  });
+
+  // 面板配色
+  duel.players.forEach(p => {
+    p.nameEl.textContent = p.name;
+    p.nameEl.style.color = p.color;
+    p.panel.style.setProperty('--pc', p.color);
+    p.input.value = '';
+    p.fbEl.textContent = '';
+    p.fbEl.className = 'dp-fb';
+    p.distEl.textContent = `0 / ${DUEL_GOAL} m`;
+  });
+
+  $('duelDiffLabel').textContent = DIFFS[diff].name;
+  $('duelDiffLabel').style.color = DIFFS[diff].color;
+
+  scene.particles = [];
+  scene.flash = 0;
+  scene.boost = 0;
+
+  showScreen('duel');
+  resizeDuel();
+
+  // 初始化第一题
+  duel.players.forEach((p, i) => nextDuelWord(i, true));
+}
+
+function nextDuelWord(idx, silent){
+  const p = duel.players[idx];
+  if (!p || duel.over) return;
+
+  // 词发完了但人还没到终点（答错扣掉的距离没补回来）时，
+  // 从词库补发下一批词，保证比赛一定能跑完，避免输入框被永久禁用
+  if (p.queue.length === 0 && p.distance < DUEL_GOAL){
+    p.queue = shuffle(duel.pool.slice(p.pos, p.pos + WORDS_PER_LEVEL));
+    p.pos += WORDS_PER_LEVEL;
+  }
+  if (p.queue.length === 0) return;
+
+  p.current = p.queue.shift();
+  p.locked = false;
+
+  p.zhEl.textContent = p.current.zh;
+  const letters = p.current.en.split('');
+  p.hintEl.textContent =
+    [letters[0], ...Array(letters.length - 1).fill('_')].join(' ') + `（${letters.length} 字母）`;
+
+  p.input.value = '';
+  p.input.disabled = false;
+
+  if (!silent) p.input.focus();
+}
+
+function submitDuel(idx){
+  const p = duel.players[idx];
+  if (!p || duel.over || p.locked || !p.current) return;
+
+  const val = p.input.value.trim().toLowerCase();
+  if (!val) { shakeInput(p.input.id); return; }
+
+  const answer = p.current.en.toLowerCase();
+
+  if (val === answer){
+    // 答对：前进 20m + 加速
+    p.locked = true;
+    p.mastered++;
+    p.distance = Math.min(DUEL_GOAL, p.distance + 20);
+    p.targetSpeed = Math.min(MAX_SPEED, p.targetSpeed + 22);
+    p.input.disabled = true;
+
+    p.fbEl.className = 'dp-fb ok';
+    p.fbEl.textContent = '✓ 正确！冲刺！';
+    p.distEl.textContent = `${Math.round(p.distance)} / ${DUEL_GOAL} m`;
+
+    spawnParticles(30 + (duelW - 64) * (p.distance / DUEL_GOAL),
+                   idx === 0 ? duelH * 0.30 : duelH * 0.78,
+                   '#4ade80', 12, 120, 180);
+
+    if (p.distance >= DUEL_GOAL){
+      setTimeout(() => { if (duel.players[idx] === p) endDuel(idx); }, 260);
+      return;
+    }
+
+    setTimeout(() => {
+      if (duel.over || duel.players[idx] !== p) return;
+      p.fbEl.textContent = '';
+      p.fbEl.className = 'dp-fb';
+      nextDuelWord(idx);
+    }, 450);
+
+  } else {
+    // 答错：后退 10m + 减速 + 词回队列
+    p.locked = true;
+    p.mistakes++;
+    p.distance = Math.max(0, p.distance - 10);
+    p.targetSpeed = Math.max(0, p.targetSpeed - 26);
+    p.input.disabled = true;
+
+    p.fbEl.className = 'dp-fb err';
+    p.fbEl.innerHTML = `✗ 正确：<b>${p.current.en}</b>`;
+
+    p.queue.push(p.current);
+    p.distEl.textContent = `${Math.round(p.distance)} / ${DUEL_GOAL} m`;
+
+    scene.flash = 1;
+    shakeInput(p.input.id);
+
+    setTimeout(() => {
+      if (duel.over || duel.players[idx] !== p) return;
+      p.fbEl.textContent = '';
+      p.fbEl.className = 'dp-fb';
+      nextDuelWord(idx);
+    }, 1500);
+  }
+}
+
+function endDuel(winnerIdx){
+  if (duel.over) return;
+  duel.over = true;
+  duel.active = false;
+
+  const elapsed = Math.max(0.1, (Date.now() - duel.startTime) / 1000);
+
+  // 得分：距离*10 - 错误*40，胜者 +500
+  duel.players.forEach((p, i) => {
+    p.finalScore = Math.max(0,
+      Math.round(p.distance * 10 - p.mistakes * 40 + (i === winnerIdx ? 500 : 0)));
+    p.input.disabled = true;
+  });
+
+  // 记录成绩
+  const diffName = DIFFS[duel.diff].name;
+  duel.players.forEach((p, i) => {
+    recordScore({
+      id: Date.now() + '-' + i + '-' + Math.random().toString(36).slice(2, 6),
+      playerId: 'guest_' + i,
+      nick: p.name,
+      mode: 'duel',
+      diff: duel.diff,
+      level: 0,
+      score: p.finalScore,
+      avgSpeed: Math.round(p.distance),
+      maxSpeed: Math.round(p.distance),
+      mistakes: p.mistakes,
+      seconds: Math.round(elapsed * 10) / 10,
+      date: Date.now() + i
+    });
+  });
+
+  showDuelResult(winnerIdx, elapsed);
+}
+
+function showDuelResult(winnerIdx, elapsed){
+  showScreen('duelResult');
+
+  const w = duel.players[winnerIdx];
+  const l = duel.players[1 - winnerIdx];
+
+  $('drIcon').textContent = '🏁';
+  $('drTitle').textContent = `${w.name} 获胜！`;
+
+  $('drStats').innerHTML = duel.players.map((p, i) => `
+    <div class="rs-item" style="border-color:${p.color}55">
+      <span class="rs-label" style="color:${p.color}">${escapeHtml(p.name)}${i === winnerIdx ? ' 👑' : ''}</span>
+      <span class="rs-value ${i === winnerIdx ? 'gold' : ''}">${p.finalScore} 分</span>
+    </div>`).join('') + `
+    <div class="rs-item"><span class="rs-label">比赛用时</span>
+      <span class="rs-value">${elapsed.toFixed(1)}s</span></div>
+    <div class="rs-item"><span class="rs-label">难度</span>
+      <span class="rs-value" style="color:${DIFFS[duel.diff].color};font-size:15px">
+        ${DIFFS[duel.diff].name}</span></div>`;
+
+  $('drText').innerHTML =
+    `${escapeHtml(w.name)} 跑完 ${DUEL_GOAL}m，领先 ${escapeHtml(l.name)} ` +
+    `${Math.round(w.distance - l.distance)}m。<br>成绩已记入排行榜（双人模式）。`;
+
+  $('drAgainBtn').onclick = () => {
+    startDuel(duel.diff, duel.players[0].name, duel.players[1].name);
+  };
+  $('drHomeBtn').onclick = () => {
+    renderMenu(); renderCurrentPlayer(); showScreen('menu');
+  };
+}
+
+/* ---------------- 玩家管理 ---------------- */
+function renderPlayers(){
+  const list = loadPlayers();
+  const curId = getCurrentPlayerId();
+  const box = $('playerList');
+
+  box.innerHTML = list.map(p => {
+    const scores = loadScores().filter(s => s.playerId === p.id);
+    const best = scores.length ? Math.max(...scores.map(s => s.score)) : 0;
+    const cls = p.id === curId ? ' cur' : '';
+    return `<div class="player-row${cls}">
+      <div class="avatar" style="background:hsl(${(p.name.charCodeAt(0) * 37) % 360},70%,62%)">
+        ${escapeHtml(p.name.slice(0, 1).toUpperCase())}</div>
+      <div style="flex:1;min-width:0">
+        <div class="pr-name">${escapeHtml(p.name)}${p.id === curId ? ' <span style="color:#60a5fa;font-size:11px">当前</span>' : ''}</div>
+        <div class="pr-stat">${scores.length} 条记录 · 最高 ${best} 分</div>
+      </div>
+      <div class="pr-actions">
+        ${p.id === curId ? '' : `<button class="mini-btn" data-switch="${p.id}">使用</button>`}
+        ${list.length > 1 ? `<button class="mini-btn" data-del="${p.id}">删除</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('[data-switch]').forEach(b => {
+    b.addEventListener('click', () => {
+      setCurrentPlayerId(b.dataset.switch);
+      renderPlayers();
+      renderCurrentPlayer();
+      renderMenu();
+    });
+  });
+  box.querySelectorAll('[data-del]').forEach(b => {
+    b.addEventListener('click', () => {
+      if (!confirm('确定删除该玩家？该玩家的历史成绩不会删除。')) return;
+      const id = b.dataset.del;
+      const left = loadPlayers().filter(p => p.id !== id);
+      savePlayers(left);
+      if (getCurrentPlayerId() === id) setCurrentPlayerId(left[0].id);
+      renderPlayers();
+      renderCurrentPlayer();
+      renderMenu();
+    });
+  });
+}
+
+$('addPlayerBtn').addEventListener('click', () => {
+  const input = $('newPlayerName');
+  const name = input.value.trim().slice(0, 12);
+  if (!name) { input.focus(); return; }
+  const list = loadPlayers();
+  if (list.some(p => p.name === name)) {
+    alert('已有同名玩家，请换一个昵称。');
+    return;
+  }
+  const p = { id: 'p' + Date.now().toString(36), name };
+  list.push(p);
+  savePlayers(list);
+  setCurrentPlayerId(p.id);
+  input.value = '';
+  renderPlayers();
+  renderCurrentPlayer();
+  renderMenu();
+});
+
+$('newPlayerName').addEventListener('keydown', e => {
+  if (e.key === 'Enter') $('addPlayerBtn').click();
+});
+
+/* ---------------- 排行榜 ---------------- */
+let lbFilter = 'all';
+let stFilter = 'all';
+
+function renderLeaderboard(){
+  let list = loadScores();
+  if (lbFilter === 'me'){
+    const id = getCurrentPlayerId();
+    list = list.filter(s => s.playerId === id);
+  }
+  list = list.slice().sort((a, b) => b.score - a.score || a.date - b.date).slice(0, 10);
+
+  const box = $('lbList');
+  if (!list.length){
+    box.innerHTML = '<p class="empty">还没有成绩，快去跑一局吧！</p>';
+    return;
+  }
+
+  box.innerHTML = list.map((s, i) => {
+    const d = DIFFS[s.diff] || { name: s.diff, color: '#94a3b8' };
+    const no = ['🥇','🥈','🥉'][i] || (i + 1);
+    const topCls = i < 3 ? ` top${i + 1}` : '';
+    const lvTxt = s.mode === 'duel' ? '双人竞速' : `第${s.level}关`;
+    return `<div class="rank-row${topCls}">
+      <span class="rank-no">${no}</span>
+      <span class="rank-nick">${escapeHtml(s.nick)}</span>
+      <span class="rank-tag" style="color:${d.color}">${d.name}·${lvTxt}</span>
+      <span class="rank-score">${s.score}</span>
+    </div>`;
+  }).join('');
+}
+
+document.querySelectorAll('[data-lb]').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-lb]').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    lbFilter = b.dataset.lb;
+    renderLeaderboard();
+  });
+});
+
+/* ---------------- 成绩表 ---------------- */
+function renderScoreTable(){
+  let list = loadScores();
+  if (stFilter === 'me'){
+    const id = getCurrentPlayerId();
+    list = list.filter(s => s.playerId === id);
+  }
+  list = list.slice().sort((a, b) => b.date - a.date).slice(0, 30);
+
+  const box = $('scoreList');
+  if (!list.length){
+    box.innerHTML = '<p class="empty">还没有成绩记录。</p>';
+    return;
+  }
+
+  box.innerHTML = list.map(s => {
+    const d = DIFFS[s.diff] || { name: s.diff, color: '#94a3b8' };
+    const dt = new Date(s.date);
+    const ds = `${dt.getMonth() + 1}/${dt.getDate()} `
+             + `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+    const lvTxt = s.mode === 'duel' ? '双人竞速' : `第 ${s.level} 关`;
+    return `<div class="score-row">
+      <div class="sr-left">
+        <div class="sr-main" style="color:${d.color}">${d.name} · ${lvTxt}</div>
+        <div class="sr-sub">${escapeHtml(s.nick)} · ${ds} · 错 ${s.mistakes} 次 · ${s.seconds}s</div>
+      </div>
+      <div class="sr-score">${s.score}</div>
+    </div>`;
+  }).join('');
+}
+
+document.querySelectorAll('[data-st]').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-st]').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    stFilter = b.dataset.st;
+    renderScoreTable();
+  });
+});
+
+/* ---------------- 输入事件 ---------------- */
+function bindEnter(input, handler){
+  input.addEventListener('keydown', e => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Enter'){ e.preventDefault(); handler(); }
+  });
+}
+
+bindEnter($('answerInput'), submitAnswer);
+$('submitBtn').addEventListener('click', submitAnswer);
+
+bindEnter($('duelInput1'), () => submitDuel(0));
+bindEnter($('duelInput2'), () => submitDuel(1));
+
+// 双人输入框聚焦高亮
+[0, 1].forEach(i => {
+  const inp = $('duelInput' + (i + 1));
+  const panel = $('dpanel' + (i + 1));
+  inp.addEventListener('focus', () => {
+    $('dpanel1').classList.remove('focus');
+    $('dpanel2').classList.remove('focus');
+    panel.classList.add('focus');
+  });
+});
+
+/* ---------------- 导航按钮 ---------------- */
+$('backBtn').addEventListener('click', () => {
+  renderMenu(); renderCurrentPlayer(); showScreen('menu');
+});
+$('duelBack').addEventListener('click', () => {
+  duel.over = true; duel.active = false;
+  renderMenu(); renderCurrentPlayer(); showScreen('menu');
+});
+
+$('playersBtn').addEventListener('click', () => { renderPlayers(); showScreen('players'); });
+$('switchPlayerBtn').addEventListener('click', () => { renderPlayers(); showScreen('players'); });
+$('duelBtn').addEventListener('click', () => {
+  const cur = getCurrentPlayer();
+  $('duelName1').value = cur.name;
+  $('duelName2').value = '玩家2';
+  showScreen('duelSetup');
+});
+$('lbBtn').addEventListener('click', () => { renderLeaderboard(); showScreen('leaderboard'); });
+$('stBtn').addEventListener('click', () => { renderScoreTable(); showScreen('scores'); });
+
+document.querySelectorAll('[data-back]').forEach(b => {
+  b.addEventListener('click', () => { renderMenu(); renderCurrentPlayer(); showScreen('menu'); });
+});
+
+/* ---------------- 启动 ---------------- */
+loadPlayers();
+renderCurrentPlayer();
+renderMenu();
+</script>
+</body>
+</html>
