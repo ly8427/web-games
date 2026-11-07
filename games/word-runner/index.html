@@ -262,6 +262,15 @@
   .bank-msg.err{color:#f87171;}
   .duel-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;}
   .chip-row-label{font-size:12px;color:#64748b;margin-top:10px;}
+
+  /* ---------- 发音 ---------- */
+  .speak-btn{display:inline-flex;align-items:center;justify-content:center;
+    width:42px;height:42px;border-radius:50%;border:2px solid var(--accent,#60a5fa);
+    background:rgba(255,255,255,.06);font-size:19px;cursor:pointer;
+    font-family:inherit;transition:.15s;line-height:1;}
+  .speak-btn:hover{background:rgba(255,255,255,.14);}
+  .speak-btn:active{transform:scale(.92);}
+  .duel-speak{width:30px;height:30px;font-size:14px;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -301,6 +310,14 @@
       <span class="diff-desc">单词非常难</span>
       <span class="diff-progress"></span>
     </button>
+  </div>
+
+  <div class="section-head">
+    <span class="section-title">🗣️ 提示方式</span>
+  </div>
+  <div class="filter-row" style="margin:0 0 4px">
+    <button class="chip on" data-hint="zh">📖 看中文拼写</button>
+    <button class="chip" data-hint="audio">🔊 听音拼写</button>
   </div>
 
   <div class="section-head">
@@ -428,6 +445,7 @@
 
   <div class="word-card">
     <div class="zh" id="zhText"></div>
+    <div style="margin:6px 0 8px"><button class="speak-btn" id="speakBtn" title="读出这个单词">🔊</button></div>
     <div class="hint" id="hintText"></div>
   </div>
 
@@ -453,6 +471,7 @@
   <div class="duel-panel" id="dpanel1">
     <div class="dp-head">
       <span class="dp-name" id="dp1name"></span>
+      <button class="speak-btn duel-speak" id="dp1speak" title="再听一次">🔊</button>
       <span class="dp-dist" id="dp1dist">0 / 100 m</span>
     </div>
     <div class="dp-zh" id="dp1zh"></div>
@@ -464,6 +483,7 @@
   <div class="duel-panel" id="dpanel2">
     <div class="dp-head">
       <span class="dp-name" id="dp2name"></span>
+      <button class="speak-btn duel-speak" id="dp2speak" title="再听一次">🔊</button>
       <span class="dp-dist" id="dp2dist">0 / 100 m</span>
     </div>
     <div class="dp-zh" id="dp2zh"></div>
@@ -621,6 +641,30 @@ function escapeHtml(s){
   ));
 }
 
+/* ---------------- 发音（浏览器内置语音，无需联网） ---------------- */
+const TTS_OK = 'speechSynthesis' in window;
+let enVoice = null;
+function pickVoice(){
+  if (!TTS_OK) return;
+  const vs = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang));
+  enVoice = vs.find(v => /en[-_]US/i.test(v.lang)) || vs[0] || null;
+}
+if (TTS_OK){
+  pickVoice();
+  speechSynthesis.onvoiceschanged = pickVoice;
+}
+function speakWord(text){
+  if (!TTS_OK || !text) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US';
+    if (enVoice) u.voice = enVoice;
+    u.rate = 0.8;   // 稍慢一点，方便听清每个音节
+    speechSynthesis.speak(u);
+  } catch(e){}
+}
+
 /* ---------------- 存储 ---------------- */
 function safeGet(k, fb){
   try { const v = localStorage.getItem(k); return v === null ? fb : v; }
@@ -640,6 +684,10 @@ const SCORE_KEY  = 'wg_scores';
 const NICK_KEY   = 'wg_nick';
 const PLAYERS_KEY= 'wg_players';
 const CURRENT_KEY= 'wg_current_player';
+const HINT_KEY   = 'wg_hint_mode';
+
+/* 提示方式：zh = 看中文拼写；audio = 听音拼写（依赖浏览器语音） */
+let hintMode = (safeGet(HINT_KEY, 'zh') === 'audio' && TTS_OK) ? 'audio' : 'zh';
 
 function loadScores(){ const a = safeJSON(SCORE_KEY, []); return Array.isArray(a) ? a : []; }
 function saveScores(a){ safeSet(SCORE_KEY, JSON.stringify(a)); }
@@ -1227,6 +1275,24 @@ document.querySelectorAll('#menu .diff-card').forEach(card => {
   card.addEventListener('click', () => startDifficulty(card.dataset.diff));
 });
 
+/* 提示方式切换（听音拼写需要浏览器支持语音） */
+document.querySelectorAll('[data-hint]').forEach(chip => {
+  chip.classList.toggle('on', chip.dataset.hint === hintMode);
+  chip.addEventListener('click', () => {
+    hintMode = chip.dataset.hint;
+    safeSet(HINT_KEY, hintMode);
+    document.querySelectorAll('[data-hint]').forEach(c => c.classList.toggle('on', c === chip));
+    if (hintMode === 'audio') speakWord('Listen and spell.');
+  });
+});
+if (!TTS_OK){
+  const audioChip = document.querySelector('[data-hint="audio"]');
+  if (audioChip){
+    audioChip.style.display = 'none';
+    audioChip.title = '当前浏览器不支持语音朗读';
+  }
+}
+
 /* ---------------- 单人：开始 ---------------- */
 function startDifficulty(diff){
   const words = sourceWordsOf(diff);
@@ -1280,16 +1346,20 @@ function nextWord(){
   state.locked  = false;
 
   const w = state.current;
-  $('zhText').textContent = w.zh;
+  const listen = hintMode === 'audio';
+  $('zhText').textContent = listen ? '🔊 听音拼写' : w.zh;
   const letters = w.en.split('');
-  $('hintText').textContent =
-    [letters[0], ...Array(letters.length - 1).fill('_')].join(' ') + `（${letters.length} 个字母）`;
+  const blanks = Array(letters.length).fill('_').join(' ');
+  $('hintText').textContent = listen
+    ? blanks + `（${letters.length} 个字母）`
+    : [letters[0], ...Array(letters.length - 1).fill('_')].join(' ') + `（${letters.length} 个字母）`;
 
   const input = $('answerInput');
   input.value    = '';
   input.disabled = false;
   $('submitBtn').disabled = false;
   input.focus();
+  if (listen) speakWord(w.en);
 }
 
 function submitAnswer(){
@@ -1316,7 +1386,9 @@ function submitAnswer(){
 
     const fb = $('feedback');
     fb.className = 'feedback ok';
-    fb.textContent = '✓ 正确！加速中 🚀';
+    fb.textContent = hintMode === 'audio'
+      ? `✓ ${state.current.en} ${state.current.zh}！加速中 🚀`
+      : '✓ 正确！加速中 🚀';
 
     updateProgress();
 
@@ -1338,7 +1410,7 @@ function submitAnswer(){
 
     const fb = $('feedback');
     fb.className = 'feedback err';
-    fb.innerHTML = `✗ 正确答案：<b>${state.current.en}</b><br>减速了… 这个词稍后会再考`;
+    fb.innerHTML = `✗ 正确答案：<b>${state.current.en}</b>${hintMode === 'audio' ? '（' + state.current.zh + '）' : ''}<br>减速了… 这个词稍后会再考`;
 
     state.queue.push(state.current);
     shakeInput('answerInput');
@@ -1595,15 +1667,18 @@ function nextDuelWord(idx, silent){
   p.current = p.queue.shift();
   p.locked = false;
 
-  p.zhEl.textContent = p.current.zh;
+  const listen = hintMode === 'audio';
+  p.zhEl.textContent = listen ? '🔊 听音拼写' : p.current.zh;
   const letters = p.current.en.split('');
-  p.hintEl.textContent =
-    [letters[0], ...Array(letters.length - 1).fill('_')].join(' ') + `（${letters.length} 字母）`;
+  const blanks = Array(letters.length).fill('_').join(' ');
+  p.hintEl.textContent = (listen ? blanks : [letters[0], ...Array(letters.length - 1).fill('_')].join(' '))
+    + `（${letters.length} 字母）`;
 
   p.input.value = '';
   p.input.disabled = false;
 
   if (!silent) p.input.focus();
+  if (listen) speakWord(p.current.en);
 }
 
 function submitDuel(idx){
@@ -1624,7 +1699,9 @@ function submitDuel(idx){
     p.input.disabled = true;
 
     p.fbEl.className = 'dp-fb ok';
-    p.fbEl.textContent = '✓ 正确！冲刺！';
+    p.fbEl.textContent = hintMode === 'audio'
+      ? `✓ ${p.current.en} ${p.current.zh}！冲刺！`
+      : '✓ 正确！冲刺！';
     p.distEl.textContent = `${Math.round(p.distance)} / ${DUEL_GOAL} m`;
 
     spawnParticles(30 + (duelW - 64) * (p.distance / DUEL_GOAL),
@@ -1652,7 +1729,7 @@ function submitDuel(idx){
     p.input.disabled = true;
 
     p.fbEl.className = 'dp-fb err';
-    p.fbEl.innerHTML = `✗ 正确：<b>${p.current.en}</b>`;
+    p.fbEl.innerHTML = `✗ 正确：<b>${p.current.en}</b>${hintMode === 'audio' ? '（' + p.current.zh + '）' : ''}`;
 
     p.queue.push(p.current);
     p.distEl.textContent = `${Math.round(p.distance)} / ${DUEL_GOAL} m`;
@@ -2079,9 +2156,22 @@ function bindEnter(input, handler){
 
 bindEnter($('answerInput'), submitAnswer);
 $('submitBtn').addEventListener('click', submitAnswer);
+$('speakBtn').addEventListener('click', () => {
+  if (state.current) speakWord(state.current.en);
+});
 
 bindEnter($('duelInput1'), () => submitDuel(0));
 bindEnter($('duelInput2'), () => submitDuel(1));
+
+// 双人发音按钮：读各自面板当前的单词
+$('dp1speak').addEventListener('click', () => {
+  const p = duel.players[0];
+  if (p && p.current) speakWord(p.current.en);
+});
+$('dp2speak').addEventListener('click', () => {
+  const p = duel.players[1];
+  if (p && p.current) speakWord(p.current.en);
+});
 
 // 双人输入框聚焦高亮
 [0, 1].forEach(i => {
