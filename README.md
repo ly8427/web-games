@@ -24,6 +24,7 @@
 | [头头药水大作战](games/potion-master/index.html) | 2D 弹幕守关 | 化身方块脑袋，用隐身/尖刺/护盾撑过 5 波攻势 |
 | [废弃城堡大冒险](games/castle/index.html) | 2D 横版闯关 | 古堡与金字塔两张地图各 10 关，带宠物夺王冠 |
 | [时空小队大冒险](games/hero-squad/index.html) | 2D 横版动作 | 小晚控时间、小猫宝瞬移、百变捏人造型决定技能；六大世界 36 关、三档难度、9 种怪物与 6 场吞噬者 BOSS 战 |
+| [单词跑酷](games/word-runner/index.html) | 2D 背单词竞速 | 拼对加速、拼错减速，4 档难度各 10 关；支持双人同屏对决，先跑完 100 米者胜 |
 
 ## 目录结构
 
@@ -33,7 +34,8 @@ web-games/
 ├── games/
 │   ├── potion-master/  # 头头药水大作战（单文件）
 │   ├── castle/         # 废弃城堡大冒险（单文件 + README）
-│   └── hero-squad/     # 时空小队大冒险（单文件）
+│   ├── hero-squad/     # 时空小队大冒险（单文件）
+│   └── word-runner/    # 单词跑酷（单文件）
 └── .gitignore
 ```
 
