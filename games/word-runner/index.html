@@ -229,6 +229,39 @@
     font-family:inherit;text-align:center;min-width:0;}
   .duel-setup-row input:focus{border-color:#60a5fa;}
   .vs{font-weight:800;color:#f472b6;font-size:15px;}
+
+  /* ---------- 我的词库 / 词库编辑 ---------- */
+  .section-head{display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px;}
+  .section-title{font-size:13px;font-weight:700;color:#94a3b8;letter-spacing:1px;}
+  .bank-hint{font-size:12px;color:#64748b;margin:2px 0 10px;line-height:1.7;}
+  .bank-row{cursor:pointer;}
+  .word-list{display:flex;flex-direction:column;gap:6px;max-height:36vh;overflow-y:auto;
+    margin:12px 0;padding-right:2px;}
+  .word-row{display:flex;align-items:center;gap:8px;padding:8px 11px;
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;}
+  .word-en{font-weight:700;font-size:13px;font-family:ui-monospace,monospace;}
+  .word-zh{color:#94a3b8;font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .word-x{background:none;border:none;color:#64748b;cursor:pointer;font-size:15px;
+    padding:2px 6px;font-family:inherit;line-height:1;}
+  .word-x:hover{color:#f87171;}
+  .bank-textarea{width:100%;min-height:110px;background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.12);border-radius:12px;color:#fff;
+    padding:10px 12px;font-family:inherit;font-size:13px;line-height:1.7;outline:none;resize:vertical;}
+  .bank-textarea:focus{border-color:#60a5fa;}
+  .field-label{font-size:12px;color:#94a3b8;margin:14px 0 6px;line-height:1.6;}
+  .add-word-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:0;}
+  .add-word-row input{padding:11px 13px;font-size:14px;background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.12);border-radius:12px;color:#fff;outline:none;
+    font-family:inherit;min-width:0;}
+  .add-word-row input:focus{border-color:#60a5fa;}
+  .add-word-row button{padding:0 16px;border-radius:12px;border:none;cursor:pointer;
+    background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;font-weight:700;
+    font-family:inherit;font-size:13px;}
+  .bank-msg{min-height:18px;font-size:12px;margin-top:8px;}
+  .bank-msg.ok{color:#4ade80;}
+  .bank-msg.err{color:#f87171;}
+  .duel-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;}
+  .chip-row-label{font-size:12px;color:#64748b;margin-top:10px;}
 </style>
 </head>
 <body>
@@ -269,6 +302,12 @@
       <span class="diff-progress"></span>
     </button>
   </div>
+
+  <div class="section-head">
+    <span class="section-title">📚 我的词库</span>
+    <button class="mini-btn" id="newBankBtn">＋ 新建</button>
+  </div>
+  <div id="bankList"></div>
 
   <div class="menu-actions">
     <button class="ghost-btn primary" id="duelBtn">⚔️ 双人竞速</button>
@@ -332,7 +371,43 @@
     </button>
   </div>
 
+  <div class="chip-row-label">或用我的词库对战（点选一个）：</div>
+  <div class="duel-chips" id="duelCustomChips"></div>
+  <div class="dp-fb" id="duelSelMsg" style="min-height:18px;margin-top:6px"></div>
+
   <button class="next-btn" id="duelStartBtn" style="margin-top:14px">开始对战 →</button>
+</section>
+
+<!-- ========== 词库编辑 ========== -->
+<section id="bankEditor" class="screen">
+  <div class="topbar">
+    <button class="back-btn" id="bankEditorBack">← 返回</button>
+    <h2 class="page-title" id="bankEditorTitle">📚 新建词库</h2>
+    <span class="spacer"></span>
+  </div>
+  <p class="page-sub">词库保存在本机浏览器里，随时可以回来增删修改</p>
+
+  <div class="field-label" style="margin-top:0">词库名称</div>
+  <div class="add-row" style="margin-top:0">
+    <input id="bankNameInput" type="text" maxlength="12" placeholder="例如：三年级英语">
+  </div>
+
+  <div class="field-label">批量导入 —— 每行一个词，支持「英文 中文」「英文,中文」「英文=中文」「英文：中文」，也可以直接从 Excel 表格复制粘贴过来</div>
+  <textarea id="bankBulkInput" class="bank-textarea" placeholder="apple 苹果&#10;banana 香蕉&#10;orange 橙子"></textarea>
+  <button class="mini-btn" id="bankImportBtn" style="margin-top:8px">导入以上内容</button>
+
+  <div class="field-label">逐个添加</div>
+  <div class="add-word-row">
+    <input id="bankWordEn" type="text" placeholder="英文（如 apple）">
+    <input id="bankWordZh" type="text" placeholder="中文（如 苹果）">
+    <button id="bankAddWordBtn">添加</button>
+  </div>
+
+  <div class="field-label" id="bankWordCount">已录入 0 个词</div>
+  <div class="word-list" id="bankWordList"></div>
+  <div class="bank-msg" id="bankMsg"></div>
+
+  <button class="next-btn" id="bankSaveBtn">保存词库</button>
 </section>
 
 <!-- ========== 单人游戏 ========== -->
@@ -340,7 +415,7 @@
   <div class="topbar">
     <button class="back-btn" id="backBtn">← 返回</button>
     <div class="level-info">
-      <span class="dn" id="diffLabel"></span>· 第 <span id="levelNum">1</span> / 10 关
+      <span class="dn" id="diffLabel"></span>· 第 <span id="levelNum">1</span> / <span id="levelTotal">10</span> 关
       <span class="dots" id="levelDots"></span>
     </div>
   </div>
@@ -597,10 +672,42 @@ function getCurrentPlayer(){
   return loadPlayers().find(p => p.id === id) || { id, name:'玩家1' };
 }
 
+/* ---------------- 自定义词库 ---------------- */
+const BANKS_KEY = 'wg_banks';
+const CUSTOM_PREFIX = 'custom:';
+const CUSTOM_COLOR = '#a78bfa';
+
+function loadBanks(){
+  const a = safeJSON(BANKS_KEY, []);
+  return Array.isArray(a) ? a.filter(b => b && b.id && Array.isArray(b.words)) : [];
+}
+function saveBanks(list){ safeSet(BANKS_KEY, JSON.stringify(list)); }
+function bankLevels(words){ return Math.max(1, Math.ceil(words.length / WORDS_PER_LEVEL)); }
+function isCustomKey(key){ return typeof key === 'string' && key.indexOf(CUSTOM_PREFIX) === 0; }
+function getBankById(id){ return loadBanks().find(b => b.id === id) || null; }
+function sourceWordsOf(key){
+  if (isCustomKey(key)){
+    const b = getBankById(key.slice(CUSTOM_PREFIX.length));
+    return b ? b.words.slice() : [];
+  }
+  const w = WORDS[key];
+  return Array.isArray(w) ? w.slice() : [];
+}
+function sourceInfoOf(key){
+  if (DIFFS[key]) return { name: DIFFS[key].name, color: DIFFS[key].color };
+  if (isCustomKey(key)){
+    const b = getBankById(key.slice(CUSTOM_PREFIX.length));
+    return { name: b ? b.name : '自定义词库', color: CUSTOM_COLOR };
+  }
+  return { name: '单词', color: '#60a5fa' };
+}
+
 /* ---------------- 单人状态 ---------------- */
 const state = {
   diff: null,
   level: 0,
+  totalLevels: LEVELS_PER_DIFF,
+  levelSize: WORDS_PER_LEVEL,
   deck: [],
   queue: [],
   current: null,
@@ -640,7 +747,7 @@ const scene = {
 
 function groundYOf(H){ return H - 42; }
 function accentColor(){
-  return DIFFS[state.diff] ? DIFFS[state.diff].color : '#60a5fa';
+  return sourceInfoOf(state.diff).color;
 }
 
 /* ---------------- 画布 ---------------- */
@@ -955,7 +1062,7 @@ function drawDuelScene(){
   const ctx = duelCtx, W = duelW, H = duelH;
   if (!W || !H) return;
 
-  const accent = DIFFS[duel.diff] ? DIFFS[duel.diff].color : '#60a5fa';
+  const accent = sourceInfoOf(duel.diff).color;
   const gy1 = H * 0.30;
   const gy2 = H * 0.78;
 
@@ -1096,6 +1203,7 @@ function showScreen(id){
 
 /* ---------------- 单人：菜单 ---------------- */
 function renderMenu(){
+  renderBanks();
   const prog = safeJSON('wg_progress', {});
   document.querySelectorAll('#menu .diff-card').forEach(card => {
     const d = card.dataset.diff;
@@ -1121,13 +1229,16 @@ document.querySelectorAll('#menu .diff-card').forEach(card => {
 
 /* ---------------- 单人：开始 ---------------- */
 function startDifficulty(diff){
+  const words = sourceWordsOf(diff);
+  if (!words.length){ alert('这个词库还没有单词，先补充几个吧。'); return; }
   state.diff = diff;
   const prog = safeJSON('wg_progress', {});
   let lv = prog[diff] || 0;
-  if (lv >= LEVELS_PER_DIFF) lv = 0;
+  state.deck = shuffle(words);
+  state.totalLevels = bankLevels(state.deck);
+  if (lv >= state.totalLevels) lv = 0;
   state.level = lv;
-  state.deck = shuffle(WORDS[diff].slice());
-  document.documentElement.style.setProperty('--accent', DIFFS[diff].color);
+  document.documentElement.style.setProperty('--accent', sourceInfoOf(diff).color);
   startLevel();
 }
 
@@ -1136,6 +1247,7 @@ function startLevel(){
   const words = state.deck.slice(start, start + WORDS_PER_LEVEL);
 
   state.queue    = shuffle(words.slice());
+  state.levelSize = words.length;
   state.current  = null;
   state.mastered = 0;
   state.mistakes = 0;
@@ -1247,18 +1359,19 @@ function shakeInput(id){
 }
 
 function updateHeader(){
-  const d = DIFFS[state.diff];
+  const info = sourceInfoOf(state.diff);
   const label = $('diffLabel');
-  label.textContent = d.name;
-  label.style.color = d.color;
+  label.textContent = info.name;
+  label.style.color = info.color;
   $('levelNum').textContent = state.level + 1;
+  $('levelTotal').textContent = state.totalLevels;
   updateProgress();
 }
 
 function updateProgress(){
   const dots = $('levelDots');
-  dots.textContent = '●'.repeat(state.mastered) + '○'.repeat(WORDS_PER_LEVEL - state.mastered);
-  dots.style.color = DIFFS[state.diff].color;
+  dots.textContent = '●'.repeat(state.mastered) + '○'.repeat(Math.max(0, state.levelSize - state.mastered));
+  dots.style.color = sourceInfoOf(state.diff).color;
 }
 
 function calcSingleScore(elapsed){
@@ -1295,10 +1408,10 @@ function levelComplete(){
   state.avgSpeed = avg;
 
   const prog = safeJSON('wg_progress', {});
-  const isLast = state.level >= LEVELS_PER_DIFF - 1;
+  const isLast = state.level >= state.totalLevels - 1;
 
   if (isLast){
-    prog[state.diff] = LEVELS_PER_DIFF;
+    prog[state.diff] = state.totalLevels;
   } else {
     prog[state.diff] = Math.max(prog[state.diff] || 0, state.level + 1);
   }
@@ -1325,9 +1438,9 @@ function showSingleResult(cleared){
 
   if (cleared){
     $('resultIcon').textContent  = '🏆';
-    $('resultTitle').textContent = `恭喜通关「${DIFFS[state.diff].name}」难度！`;
+    $('resultTitle').textContent = `恭喜通关「${sourceInfoOf(state.diff).name}」！`;
     $('resultText').innerHTML =
-      `你完成了全部 ${LEVELS_PER_DIFF} 关，共 ${LEVELS_PER_DIFF * WORDS_PER_LEVEL} 个单词。<br>成绩已记入排行榜。`;
+      `你完成了全部 ${state.totalLevels} 关，共 ${state.deck.length} 个单词。<br>成绩已记入排行榜。`;
     btn.textContent = '返回主页';
     btn.onclick = () => { renderMenu(); renderCurrentPlayer(); showScreen('menu'); };
   } else {
@@ -1346,32 +1459,70 @@ function showSingleResult(cleared){
    ============================================================ */
 const DUEL_COLORS = ['#60a5fa', '#f472b6'];
 
-let duelSelDiff = 'peace';
+let duelSel = { type: 'builtin', key: 'peace' };
 
 document.querySelectorAll('#duelDiffs .diff-card').forEach(card => {
   card.addEventListener('click', () => {
     document.querySelectorAll('#duelDiffs .diff-card').forEach(c => c.classList.remove('sel'));
+    $('duelCustomChips').querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
     card.classList.add('sel');
-    duelSelDiff = card.dataset.diff;
+    duelSel = { type: 'builtin', key: card.dataset.diff };
   });
 });
 // 默认选中第一个
 document.querySelector('#duelDiffs .diff-card').classList.add('sel');
 
+function renderDuelCustomChips(){
+  const box = $('duelCustomChips');
+  const banks = loadBanks();
+  if (!banks.length){
+    box.innerHTML = '<span class="chip-row-label" style="margin:0">还没有自定义词库——回主页「我的词库」创建一个</span>';
+    return;
+  }
+  box.innerHTML = banks.map(b =>
+    `<button class="chip" data-duelbank="${b.id}">${escapeHtml(b.name)}（${b.words.length} 词）</button>`).join('');
+  box.querySelectorAll('[data-duelbank]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      box.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+      btn.classList.add('on');
+      document.querySelectorAll('#duelDiffs .diff-card').forEach(c => c.classList.remove('sel'));
+      $('duelSelMsg').textContent = '';
+      duelSel = { type: 'custom', id: btn.dataset.duelbank };
+    });
+  });
+}
+function syncDuelSelUI(){
+  document.querySelectorAll('#duelDiffs .diff-card').forEach(c =>
+    c.classList.toggle('sel', duelSel.type === 'builtin' && duelSel.key === c.dataset.diff));
+  $('duelCustomChips').querySelectorAll('.chip').forEach(c =>
+    c.classList.toggle('on', duelSel.type === 'custom' && duelSel.id === c.dataset.duelbank));
+}
+
 $('duelStartBtn').addEventListener('click', () => {
   const cur = getCurrentPlayer();
   const n1 = ($('duelName1').value.trim() || cur.name || '玩家1').slice(0, 12);
   const n2 = ($('duelName2').value.trim() || '玩家2').slice(0, 12);
-  startDuel(duelSelDiff, n1, n2);
+  startDuel(duelSel.type === 'custom' ? CUSTOM_PREFIX + duelSel.id : duelSel.key, n1, n2);
 });
 
 function startDuel(diff, n1, n2){
+  const words = isCustomKey(diff)
+    ? (getBankById(diff.slice(CUSTOM_PREFIX.length)) || {}).words
+    : WORDS[diff];
+  if (!Array.isArray(words) || words.length < WORDS_PER_LEVEL){
+    const info = sourceInfoOf(diff);
+    $('duelSelMsg').className = 'dp-fb err';
+    $('duelSelMsg').textContent =
+      `「${info.name}」只有 ${Array.isArray(words) ? words.length : 0} 个词，` +
+      `双人对决至少需要 ${WORDS_PER_LEVEL} 个词，先回主页编辑词库补充。`;
+    return;
+  }
   duel.diff = diff;
   duel.active = true;
   duel.over = false;
   duel.startTime = Date.now();
 
-  duel.pool = shuffle(WORDS[diff].slice());
+  duel.pool = shuffle(words.slice());
 
   duel.players = [0, 1].map(i => {
     const q = shuffle(duel.pool.slice(0, WORDS_PER_LEVEL));
@@ -1408,8 +1559,9 @@ function startDuel(diff, n1, n2){
     p.distEl.textContent = `0 / ${DUEL_GOAL} m`;
   });
 
-  $('duelDiffLabel').textContent = DIFFS[diff].name;
-  $('duelDiffLabel').style.color = DIFFS[diff].color;
+  const dInfo = sourceInfoOf(diff);
+  $('duelDiffLabel').textContent = dInfo.name;
+  $('duelDiffLabel').style.color = dInfo.color;
 
   scene.particles = [];
   scene.flash = 0;
@@ -1427,10 +1579,16 @@ function nextDuelWord(idx, silent){
   if (!p || duel.over) return;
 
   // 词发完了但人还没到终点（答错扣掉的距离没补回来）时，
-  // 从词库补发下一批词，保证比赛一定能跑完，避免输入框被永久禁用
+  // 从词库补发下一批词；词库本身用尽（小词库）则循环复用，
+  // 保证比赛一定能跑完，避免输入框被永久禁用
   if (p.queue.length === 0 && p.distance < DUEL_GOAL){
-    p.queue = shuffle(duel.pool.slice(p.pos, p.pos + WORDS_PER_LEVEL));
+    let batch = duel.pool.slice(p.pos, p.pos + WORDS_PER_LEVEL);
     p.pos += WORDS_PER_LEVEL;
+    if (batch.length === 0){
+      batch = shuffle(duel.pool.slice());
+      p.pos = 0;
+    }
+    p.queue = batch;
   }
   if (p.queue.length === 0) return;
 
@@ -1526,7 +1684,7 @@ function endDuel(winnerIdx){
   });
 
   // 记录成绩
-  const diffName = DIFFS[duel.diff].name;
+  const diffName = sourceInfoOf(duel.diff).name;
   duel.players.forEach((p, i) => {
     recordScore({
       id: Date.now() + '-' + i + '-' + Math.random().toString(36).slice(2, 6),
@@ -1563,9 +1721,9 @@ function showDuelResult(winnerIdx, elapsed){
     </div>`).join('') + `
     <div class="rs-item"><span class="rs-label">比赛用时</span>
       <span class="rs-value">${elapsed.toFixed(1)}s</span></div>
-    <div class="rs-item"><span class="rs-label">难度</span>
-      <span class="rs-value" style="color:${DIFFS[duel.diff].color};font-size:15px">
-        ${DIFFS[duel.diff].name}</span></div>`;
+    <div class="rs-item"><span class="rs-label">词库</span>
+      <span class="rs-value" style="color:${sourceInfoOf(duel.diff).color};font-size:15px">
+        ${escapeHtml(sourceInfoOf(duel.diff).name)}</span></div>`;
 
   $('drText').innerHTML =
     `${escapeHtml(w.name)} 跑完 ${DUEL_GOAL}m，领先 ${escapeHtml(l.name)} ` +
@@ -1578,6 +1736,188 @@ function showDuelResult(winnerIdx, elapsed){
     renderMenu(); renderCurrentPlayer(); showScreen('menu');
   };
 }
+
+/* ---------------- 我的词库（主页列表） ---------------- */
+function renderBanks(){
+  const box = $('bankList');
+  const banks = loadBanks();
+  if (!banks.length){
+    box.innerHTML = '<p class="bank-hint">还没有自定义词库。点右上角「＋ 新建」，把要背的词录进来——单人闯关和双人对决都能用。</p>';
+    return;
+  }
+  const prog = safeJSON('wg_progress', {});
+  box.innerHTML = banks.map(b => {
+    const total = bankLevels(b.words);
+    const done = Math.min(prog[CUSTOM_PREFIX + b.id] || 0, total);
+    const stat = done >= total
+      ? `已通关 ✓ · ${b.words.length} 词`
+      : done > 0
+        ? `${b.words.length} 词 · 进度 ${done} / ${total} 关`
+        : `${b.words.length} 词 · 未开始`;
+    return `<div class="player-row bank-row" data-play="${b.id}">
+      <div class="avatar" style="background:${CUSTOM_COLOR}">📚</div>
+      <div style="flex:1;min-width:0">
+        <div class="pr-name">${escapeHtml(b.name)}</div>
+        <div class="pr-stat">${stat}</div>
+      </div>
+      <div class="pr-actions">
+        <button class="mini-btn" data-playbank="${b.id}">▶ 开始</button>
+        <button class="mini-btn" data-editbank="${b.id}">编辑</button>
+        <button class="mini-btn" data-delbank="${b.id}">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  const play = id => startDifficulty(CUSTOM_PREFIX + id);
+  box.querySelectorAll('[data-play]').forEach(row => {
+    row.addEventListener('click', () => play(row.dataset.play));
+  });
+  box.querySelectorAll('[data-playbank]').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); play(btn.dataset.playbank); });
+  });
+  box.querySelectorAll('[data-editbank]').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); openBankEditor(btn.dataset.editbank); });
+  });
+  box.querySelectorAll('[data-delbank]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const b = getBankById(btn.dataset.delbank);
+      if (!b || !confirm(`确定删除词库「${b.name}」？词库里的单词会一起删掉。`)) return;
+      saveBanks(loadBanks().filter(x => x.id !== b.id));
+      const prog = safeJSON('wg_progress', {});
+      if (prog[CUSTOM_PREFIX + b.id] !== undefined){
+        delete prog[CUSTOM_PREFIX + b.id];
+        safeSet('wg_progress', JSON.stringify(prog));
+      }
+      renderBanks();
+    });
+  });
+}
+
+/* ---------------- 词库编辑 ---------------- */
+let editingBankId = null;
+let editingWords = [];
+
+function openBankEditor(id){
+  editingBankId = id || null;
+  const b = id ? getBankById(id) : null;
+  editingWords = b ? b.words.map(w => ({ en: w.en, zh: w.zh })) : [];
+  $('bankEditorTitle').textContent = b ? '📚 编辑词库' : '📚 新建词库';
+  $('bankNameInput').value = b ? b.name : '';
+  $('bankBulkInput').value = '';
+  $('bankWordEn').value = '';
+  $('bankWordZh').value = '';
+  $('bankMsg').textContent = '';
+  $('bankMsg').className = 'bank-msg';
+  renderEditorWords();
+  showScreen('bankEditor');
+}
+
+function setBankMsg(text, cls){
+  $('bankMsg').textContent = text;
+  $('bankMsg').className = 'bank-msg' + (cls ? ' ' + cls : '');
+}
+
+function renderEditorWords(){
+  const n = editingWords.length;
+  $('bankWordCount') && ($('bankWordCount').textContent =
+    `已录入 ${n} 个词` +
+    (n < WORDS_PER_LEVEL ? `（单人闯关可玩；双人对决至少需要 ${WORDS_PER_LEVEL} 个词）` : ''));
+  $('bankWordList').innerHTML = editingWords.map((w, i) =>
+    `<div class="word-row">
+      <span class="word-en">${escapeHtml(w.en)}</span>
+      <span class="word-zh">${escapeHtml(w.zh || '（未填中文）')}</span>
+      <button class="word-x" data-rmword="${i}" title="删除这个词">✕</button>
+    </div>`).join('');
+  $('bankWordList').querySelectorAll('[data-rmword]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editingWords.splice(+btn.dataset.rmword, 1);
+      renderEditorWords();
+    });
+  });
+}
+
+function parseBulkWords(text){
+  let added = 0, updated = 0, skipped = 0;
+  String(text).split(/\r?\n/).forEach(line => {
+    const raw = line.trim();
+    if (!raw) return;
+    let en = '', zh = '';
+    const seps = ['\t', '=', '：', '，', '、', ','];
+    for (const sep of seps){
+      const i = raw.indexOf(sep);
+      if (i > 0){ en = raw.slice(0, i).trim(); zh = raw.slice(i + sep.length).trim(); break; }
+    }
+    if (!en){
+      const parts = raw.split(/\s+/);
+      en = parts[0] || '';
+      zh = parts.slice(1).join(' ');
+    }
+    if (!en || !zh){ skipped++; return; }
+    en = en.toLowerCase();
+    const exist = editingWords.find(w => w.en.toLowerCase() === en);
+    if (exist){ exist.zh = zh; updated++; }
+    else { editingWords.push({ en, zh }); added++; }
+  });
+  return { added, updated, skipped };
+}
+
+function addEditorWord(){
+  const en = $('bankWordEn').value.trim().toLowerCase().slice(0, 40);
+  const zh = $('bankWordZh').value.trim().slice(0, 40);
+  if (!en || !zh){
+    setBankMsg('英文和中文都要填才能添加。', 'err');
+    return;
+  }
+  const exist = editingWords.find(w => w.en.toLowerCase() === en);
+  setBankMsg(exist ? `「${en}」已有，中文已更新。` : `已添加 ${en} ${zh}。`, 'ok');
+  if (exist) exist.zh = zh;
+  else editingWords.push({ en, zh });
+  $('bankWordEn').value = '';
+  $('bankWordZh').value = '';
+  $('bankWordEn').focus();
+  renderEditorWords();
+}
+
+$('newBankBtn').addEventListener('click', () => openBankEditor(null));
+$('bankEditorBack').addEventListener('click', () => { renderBanks(); showScreen('menu'); });
+$('bankImportBtn').addEventListener('click', () => {
+  const r = parseBulkWords($('bankBulkInput').value);
+  $('bankBulkInput').value = '';
+  renderEditorWords();
+  if (!r.added && !r.updated){
+    setBankMsg(r.skipped ? `${r.skipped} 行缺少英文或中文，没有导入。检查一下格式？` : '没有可导入的内容。', 'err');
+    return;
+  }
+  setBankMsg(`导入完成：新增 ${r.added} 个词` +
+    (r.updated ? `，更新 ${r.updated} 个重复词的中文` : '') +
+    (r.skipped ? `，${r.skipped} 行格式不对没导入` : '') + '。', 'ok');
+});
+$('bankAddWordBtn').addEventListener('click', addEditorWord);
+[$('bankWordEn'), $('bankWordZh')].forEach(inp => {
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); addEditorWord(); }
+  });
+});
+$('bankSaveBtn').addEventListener('click', () => {
+  const name = $('bankNameInput').value.trim().slice(0, 12);
+  if (!name){ setBankMsg('先给词库起个名字吧。', 'err'); $('bankNameInput').focus(); return; }
+  if (!editingWords.length){ setBankMsg('至少录入 1 个词再保存。', 'err'); return; }
+  const list = loadBanks();
+  if (editingBankId){
+    const b = list.find(x => x.id === editingBankId);
+    if (b){ b.name = name; b.words = editingWords; }
+    else list.push({ id: editingBankId, name, words: editingWords, createdAt: Date.now() });
+  } else {
+    list.push({
+      id: 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      name, words: editingWords, createdAt: Date.now()
+    });
+  }
+  saveBanks(list);
+  renderBanks();
+  showScreen('menu');
+});
 
 /* ---------------- 玩家管理 ---------------- */
 function renderPlayers(){
@@ -1667,7 +2007,7 @@ function renderLeaderboard(){
   }
 
   box.innerHTML = list.map((s, i) => {
-    const d = DIFFS[s.diff] || { name: s.diff, color: '#94a3b8' };
+    const d = sourceInfoOf(s.diff);
     const no = ['🥇','🥈','🥉'][i] || (i + 1);
     const topCls = i < 3 ? ` top${i + 1}` : '';
     const lvTxt = s.mode === 'duel' ? '双人竞速' : `第${s.level}关`;
@@ -1705,7 +2045,7 @@ function renderScoreTable(){
   }
 
   box.innerHTML = list.map(s => {
-    const d = DIFFS[s.diff] || { name: s.diff, color: '#94a3b8' };
+    const d = sourceInfoOf(s.diff);
     const dt = new Date(s.date);
     const ds = `${dt.getMonth() + 1}/${dt.getDate()} `
              + `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
@@ -1769,6 +2109,9 @@ $('duelBtn').addEventListener('click', () => {
   const cur = getCurrentPlayer();
   $('duelName1').value = cur.name;
   $('duelName2').value = '玩家2';
+  renderDuelCustomChips();
+  syncDuelSelUI();
+  $('duelSelMsg').textContent = '';
   showScreen('duelSetup');
 });
 $('lbBtn').addEventListener('click', () => { renderLeaderboard(); showScreen('leaderboard'); });
