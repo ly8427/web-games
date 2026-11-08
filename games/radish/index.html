@@ -17,6 +17,9 @@
     user-select: none;
     -webkit-user-select: none;
     overflow-x: hidden;
+    /* 禁用双击缩放（本仓库历史坑：快速连点触发页面放大吞掉点击，见 PR #17/#19） */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
   .game {
     width: min(960px, 100vw);
@@ -65,15 +68,27 @@
     box-shadow: inset 0 8px 12px rgba(0,0,0,.48), 0 4px 0 rgba(0,0,0,.16);
   }
   .radish {
-    display: none;
+    /* 默认缩在坑心里（土里）：以萝卜底部为原点缩小 + 下沉 + 透明 */
     position: absolute;
     left: 50%;
     bottom: 27%;
-    transform: translateX(-50%);
+    transform: translateX(-50%) translateY(40%) scale(.15);
+    transform-origin: 50% 90%;
+    opacity: 0;
+    pointer-events: none;
     width: 94%;
     padding: 8px 2px 2px;
     cursor: pointer;
     touch-action: manipulation;
+    /* 钻回土里的过渡（.up 移除时生效）：快进慢出缩回 */
+    transition: transform .18s ease-in, opacity .18s ease-in;
+  }
+  .radish.up {
+    /* 从坑里弹出长大：带回弹的曲线 */
+    transform: translateX(-50%) translateY(0) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+    transition: transform .24s cubic-bezier(.34,1.56,.64,1), opacity .14s ease-out;
   }
   .radish-body {
     font-size: clamp(30px, 7vw, 54px);
@@ -408,7 +423,7 @@ function render(now) {
     const r = state.radishes.find(x => x.status === 'active' && x.hole === h);
 
     if (r) {
-      el.style.display = 'block';
+      el.classList.add('up');
       el.dataset.id = String(r.id);
 
       const hpPct = Math.max(0, Math.min(100, r.hp / r.maxHp * 100));
@@ -418,7 +433,7 @@ function render(now) {
       const lifePct = Math.max(0, Math.min(100, (r.activeUntil - now) / LIFE_TIME * 100));
       el.querySelector('.life-fill').style.width = lifePct + '%';
     } else {
-      el.style.display = 'none';
+      el.classList.remove('up');
       el.dataset.id = '';
     }
   }
@@ -469,6 +484,14 @@ showOverlay(
   '开始第 1 关',
   () => startLevel(0)
 );
+
+/* 兜底拦截双击缩放：320ms 内的第二次 touchend 阻止默认（Safari 双击放大，历史坑见 PR #17/#19） */
+let lastTouchEnd = 0;
+document.addEventListener('touchend', function (e) {
+  const now = Date.now();
+  if (now - lastTouchEnd < 320 && e.touches.length === 0) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
 
 requestAnimationFrame(loop);
 </script>
