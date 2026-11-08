@@ -409,13 +409,13 @@
     <input id="bankNameInput" type="text" maxlength="12" placeholder="例如：三年级英语">
   </div>
 
-  <div class="field-label">批量导入 —— 每行一个词，支持「英文 中文」「英文,中文」「英文=中文」「英文：中文」，也可以直接从 Excel 表格复制粘贴过来</div>
-  <textarea id="bankBulkInput" class="bank-textarea" placeholder="apple 苹果&#10;banana 香蕉&#10;orange 橙子"></textarea>
+  <div class="field-label">批量导入 —— 每行一个单词或短句，支持「air hostess 空姐」这种直接写法，也支持「英文,中文」「英文=中文」「英文：中文」，或直接从 Excel 表格复制粘贴过来</div>
+  <textarea id="bankBulkInput" class="bank-textarea" placeholder="apple 苹果&#10;air hostess 空姐&#10;good morning 早安"></textarea>
   <button class="mini-btn" id="bankImportBtn" style="margin-top:8px">导入以上内容</button>
 
   <div class="field-label">逐个添加</div>
   <div class="add-word-row">
-    <input id="bankWordEn" type="text" placeholder="英文（如 apple）">
+    <input id="bankWordEn" type="text" placeholder="英文单词或短句（如 air hostess）">
     <input id="bankWordZh" type="text" placeholder="中文（如 苹果）">
     <button id="bankAddWordBtn">添加</button>
   </div>
@@ -639,6 +639,26 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => (
     {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
   ));
+}
+
+/* 出题提示：字母打码；空格、连字符、撇号等原样显示（短句也能猜） */
+function buildHint(en, listen){
+  const parts = [];
+  let letterCount = 0;
+  en.split('').forEach((c, i) => {
+    if (/[a-zA-Z]/.test(c)){
+      letterCount++;
+      parts.push(!listen && i === 0 ? c : '_');
+    } else {
+      parts.push(c);
+    }
+  });
+  return parts.join(' ') + `（${letterCount} 个字母）`;
+}
+
+/* 判分时把连续空格当成一个、弯引号当作直引号，多敲空格也算对 */
+function normAnswer(s){
+  return s.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, ' ').trim();
 }
 
 /* ---------------- 发音（浏览器内置语音，无需联网） ---------------- */
@@ -1348,11 +1368,7 @@ function nextWord(){
   const w = state.current;
   const listen = hintMode === 'audio';
   $('zhText').textContent = listen ? '🔊 听音拼写' : w.zh;
-  const letters = w.en.split('');
-  const blanks = Array(letters.length).fill('_').join(' ');
-  $('hintText').textContent = listen
-    ? blanks + `（${letters.length} 个字母）`
-    : [letters[0], ...Array(letters.length - 1).fill('_')].join(' ') + `（${letters.length} 个字母）`;
+  $('hintText').textContent = buildHint(w.en, listen);
 
   const input = $('answerInput');
   input.value    = '';
@@ -1366,10 +1382,10 @@ function submitAnswer(){
   if (state.locked || !state.current) return;
 
   const input = $('answerInput');
-  const val   = input.value.trim().toLowerCase();
+  const val   = normAnswer(input.value);
   if (!val) { shakeInput('answerInput'); return; }
 
-  const answer = state.current.en.toLowerCase();
+  const answer = normAnswer(state.current.en);
   const gy = groundYOf(singleH);
   const rx = singleW * 0.24;
 
@@ -1669,10 +1685,7 @@ function nextDuelWord(idx, silent){
 
   const listen = hintMode === 'audio';
   p.zhEl.textContent = listen ? '🔊 听音拼写' : p.current.zh;
-  const letters = p.current.en.split('');
-  const blanks = Array(letters.length).fill('_').join(' ');
-  p.hintEl.textContent = (listen ? blanks : [letters[0], ...Array(letters.length - 1).fill('_')].join(' '))
-    + `（${letters.length} 字母）`;
+  p.hintEl.textContent = buildHint(p.current.en, listen);
 
   p.input.value = '';
   p.input.disabled = false;
@@ -1685,10 +1698,10 @@ function submitDuel(idx){
   const p = duel.players[idx];
   if (!p || duel.over || p.locked || !p.current) return;
 
-  const val = p.input.value.trim().toLowerCase();
+  const val = normAnswer(p.input.value);
   if (!val) { shakeInput(p.input.id); return; }
 
-  const answer = p.current.en.toLowerCase();
+  const answer = normAnswer(p.current.en);
 
   if (val === answer){
     // 答对：前进 20m + 加速
@@ -1916,22 +1929,28 @@ function renderEditorWords(){
 
 function parseBulkWords(text){
   let added = 0, updated = 0, skipped = 0;
+  // 中文/全角标点：作为「英文部分」结束、中文开始的分界
+  const CJK = /[\u3000-\u303f\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/;
   String(text).split(/\r?\n/).forEach(line => {
     const raw = line.trim();
     if (!raw) return;
     let en = '', zh = '';
-    const seps = ['\t', '=', '：', '，', '、', ','];
-    for (const sep of seps){
-      const i = raw.indexOf(sep);
-      if (i > 0){ en = raw.slice(0, i).trim(); zh = raw.slice(i + sep.length).trim(); break; }
-    }
-    if (!en){
-      const parts = raw.split(/\s+/);
-      en = parts[0] || '';
-      zh = parts.slice(1).join(' ');
+    const tab = raw.indexOf('\t');
+    if (tab > 0){
+      // Excel 两列粘贴：制表符分隔最可靠
+      en = raw.slice(0, tab).trim();
+      zh = raw.slice(tab + 1).trim();
+    } else {
+      const m = raw.match(CJK);
+      if (m && m.index > 0){
+        // 短语场景：英文在前的整行（如 air hostess 空姐 / don't 不要）
+        en = raw.slice(0, m.index).trim().replace(/[,=;:.、，：]+$/, '').trim();
+        zh = raw.slice(m.index).replace(/^[\u3000-\u303f\uff00-\uffef\s]+/, '').trim();
+      }
     }
     if (!en || !zh){ skipped++; return; }
-    en = en.toLowerCase();
+    en = en.toLowerCase().slice(0, 60);
+    zh = zh.slice(0, 60);
     const exist = editingWords.find(w => w.en.toLowerCase() === en);
     if (exist){ exist.zh = zh; updated++; }
     else { editingWords.push({ en, zh }); added++; }
@@ -1940,8 +1959,8 @@ function parseBulkWords(text){
 }
 
 function addEditorWord(){
-  const en = $('bankWordEn').value.trim().toLowerCase().slice(0, 40);
-  const zh = $('bankWordZh').value.trim().slice(0, 40);
+  const en = $('bankWordEn').value.trim().toLowerCase().slice(0, 60);
+  const zh = $('bankWordZh').value.trim().slice(0, 60);
   if (!en || !zh){
     setBankMsg('英文和中文都要填才能添加。', 'err');
     return;
