@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>打萝卜</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, #87ceeb 0%, #dff6ff 42%, #7ec850 42%, #4e9f3d 100%);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow-x: hidden;
+  }
+  .game {
+    width: min(960px, 100vw);
+    padding: 16px;
+  }
+  header {
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .stat {
+    flex: 1;
+    text-align: center;
+    background: rgba(255,255,255,.88);
+    border-radius: 12px;
+    padding: 8px 10px;
+    font-size: 14px;
+    box-shadow: 0 3px 10px rgba(0,0,0,.12);
+  }
+  .stat strong { font-size: 18px; }
+  .timebar {
+    height: 11px;
+    background: rgba(255,255,255,.75);
+    border-radius: 99px;
+    margin: 10px 0 16px;
+    overflow: hidden;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.18);
+  }
+  #timeFill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #06d6a0, #ffd166, #ef476f);
+    transition: width .08s linear;
+  }
+  .field {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: clamp(6px, 1.5vw, 16px);
+  }
+  .hole {
+    position: relative;
+    aspect-ratio: 1 / 1.05;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, #2d1a0f 0%, #4f301b 42%, #8b5a2b 70%, #654020 100%);
+    box-shadow: inset 0 8px 12px rgba(0,0,0,.48), 0 4px 0 rgba(0,0,0,.16);
+  }
+  .radish {
+    display: none;
+    position: absolute;
+    left: 50%;
+    bottom: 27%;
+    transform: translateX(-50%);
+    width: 94%;
+    padding: 8px 2px 2px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .radish-body {
+    font-size: clamp(30px, 7vw, 54px);
+    line-height: 1;
+    text-align: center;
+    filter: drop-shadow(0 4px 2px rgba(0,0,0,.28));
+    pointer-events: none;
+  }
+  .hp-bar, .life-bar {
+    height: 7px;
+    background: rgba(0,0,0,.38);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-top: 3px;
+    pointer-events: none;
+  }
+  .hp-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #ef476f, #ffd166);
+    transition: width .05s linear;
+  }
+  .life-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #06d6a0, #118ab2);
+    transition: width .05s linear;
+  }
+  .hp-text {
+    font-size: 11px;
+    text-align: center;
+    color: #fff;
+    text-shadow: 0 1px 2px #000;
+    margin-top: 2px;
+    pointer-events: none;
+  }
+  .hint {
+    text-align: center;
+    color: #17351a;
+    font-size: 13px;
+    margin: 14px 0 0;
+    text-shadow: 0 1px 0 rgba(255,255,255,.45);
+  }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 10;
+  }
+  .overlay.hidden { display: none; }
+  .panel {
+    width: 100%;
+    max-width: 430px;
+    background: #fff;
+    border-radius: 22px;
+    padding: 26px 22px;
+    text-align: center;
+    box-shadow: 0 18px 50px rgba(0,0,0,.28);
+  }
+  .panel h1 {
+    margin: 0 0 10px;
+    font-size: 28px;
+    color: #2d1a0f;
+  }
+  .panel p {
+    margin: 0 0 20px;
+    color: #4b4b4b;
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .panel button {
+    width: 100%;
+    border: 0;
+    border-radius: 14px;
+    padding: 13px 18px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(180deg, #ff8a3d, #ef476f);
+    box-shadow: 0 6px 0 #b83150;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .panel button:active {
+    transform: translateY(3px);
+    box-shadow: 0 3px 0 #b83150;
+  }
+  @media (max-width: 520px) {
+    .game { padding: 10px; }
+    .field { gap: 6px; }
+    .stat { padding: 6px 4px; font-size: 11px; }
+    .stat strong { font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+<div class="game">
+  <header>
+    <div class="stat">关卡 <strong id="levelText">1/24</strong></div>
+    <div class="stat">时间 <strong id="timeText">0</strong>s</div>
+    <div class="stat">击杀 <strong id="killText">0/10</strong></div>
+  </header>
+  <div class="timebar"><div id="timeFill"></div></div>
+  <main id="field" class="field"></main>
+  <p class="hint">点击萝卜扣 1 血；漏掉不判负，2 秒后残血重冒。</p>
+</div>
+
+<div id="overlay" class="overlay">
+  <div class="panel">
+    <h1 id="overlayTitle">打萝卜</h1>
+    <p id="overlayText">每关固定 10 个萝卜。时间结束前全部击杀即过关。</p>
+    <button id="overlayBtn">开始第 1 关</button>
+  </div>
+</div>
+
+<script>
+const HP_LIST = [10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22];
+
+const LEVELS = HP_LIST.map((hp, i) => ({
+  level: i + 1,
+  hp,
+  time: 30 + i,
+  maxConcurrent: i < 3 ? 2 : 3,
+  spawnInterval: Number((0.8 - i * 0.02).toFixed(2))
+}));
+
+const HOLE_COUNT = 5;
+const TOTAL_RADISHES = 10;
+const LIFE_TIME = 3000;
+const RESPAWN_DELAY = 2000;
+
+const fieldEl = document.getElementById('field');
+const levelText = document.getElementById('levelText');
+const timeText = document.getElementById('timeText');
+const killText = document.getElementById('killText');
+const timeFill = document.getElementById('timeFill');
+const overlay = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlayTitle');
+const overlayText = document.getElementById('overlayText');
+const overlayBtn = document.getElementById('overlayBtn');
+
+const holeEls = [];
+const radishEls = [];
+
+for (let i = 0; i < HOLE_COUNT; i++) {
+  const hole = document.createElement('div');
+  hole.className = 'hole';
+
+  const radish = document.createElement('div');
+  radish.className = 'radish';
+  radish.innerHTML = `
+    <div class="radish-body">🥕</div>
+    <div class="hp-bar"><div class="hp-fill"></div></div>
+    <div class="hp-text">0/0</div>
+    <div class="life-bar"><div class="life-fill"></div></div>
+  `;
+  radish.addEventListener('pointerdown', onRadishPointerDown);
+
+  hole.appendChild(radish);
+  fieldEl.appendChild(hole);
+  holeEls.push(hole);
+  radishEls.push(radish);
+}
+
+const state = {
+  levelIndex: 0,
+  running: false,
+  finished: false,
+  timeLeft: 0,
+  elapsed: 0,
+  lastSpawnAt: 0,
+  killed: 0,
+  radishes: []
+};
+
+function onRadishPointerDown(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const raw = e.currentTarget.dataset.id;
+  if (raw === undefined || raw === '') return;
+  hitRadish(Number(raw));
+}
+
+function startLevel(index) {
+  const cfg = LEVELS[index];
+  state.levelIndex = index;
+  state.running = true;
+  state.finished = false;
+  state.timeLeft = cfg.time * 1000;
+  state.elapsed = 0;
+  state.lastSpawnAt = -cfg.spawnInterval * 1000;
+  state.killed = 0;
+  state.radishes = Array.from({ length: TOTAL_RADISHES }, (_, id) => ({
+    id,
+    hp: cfg.hp,
+    maxHp: cfg.hp,
+    status: 'pending',
+    hole: null,
+    activeUntil: 0,
+    respawnAt: 0
+  }));
+  hideOverlay();
+  updateHud(performance.now());
+  render(performance.now());
+}
+
+function updateGame(now) {
+  const cfg = LEVELS[state.levelIndex];
+
+  // 1. 到达 3 秒的萝卜落地，进入残血等待重冒状态
+  for (const r of state.radishes) {
+    if (r.status === 'active' && now >= r.activeUntil) {
+      r.status = 'waiting';
+      r.respawnAt = now + RESPAWN_DELAY;
+      r.hole = null;
+    }
+  }
+
+  // 2. 控制同时出现数量和出现间隔
+  const activeCount = state.radishes.filter(r => r.status === 'active').length;
+  if (activeCount >= cfg.maxConcurrent) return;
+  if (state.elapsed - state.lastSpawnAt < cfg.spawnInterval * 1000) return;
+
+  const occupiedHoles = new Set(
+    state.radishes
+      .filter(r => r.status === 'active' && r.hole !== null)
+      .map(r => r.hole)
+  );
+
+  const freeHoles = [];
+  for (let h = 0; h < HOLE_COUNT; h++) {
+    if (!occupiedHoles.has(h)) freeHoles.push(h);
+  }
+  if (freeHoles.length === 0) return;
+
+  const candidates = state.radishes.filter(r =>
+    r.status === 'pending' ||
+    (r.status === 'waiting' && r.respawnAt <= now)
+  );
+  if (candidates.length === 0) return;
+
+  // 残血重冒优先，其次按萝卜编号
+  candidates.sort((a, b) => {
+    const pa = a.status === 'waiting' ? 0 : 1;
+    const pb = b.status === 'waiting' ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return a.id - b.id;
+  });
+
+  const r = candidates[0];
+  const hole = freeHoles[Math.floor(Math.random() * freeHoles.length)];
+  r.status = 'active';
+  r.hole = hole;
+  r.activeUntil = now + LIFE_TIME;
+  // pending 萝卜使用满血；waiting 萝卜保留残血，不回血
+  state.lastSpawnAt = state.elapsed;
+}
+
+function hitRadish(id) {
+  if (!state.running || state.finished) return;
+
+  const r = state.radishes[id];
+  if (!r || r.status !== 'active') return;
+
+  r.hp -= 1;
+
+  if (r.hp <= 0) {
+    r.hp = 0;
+    r.status = 'dead';
+    r.hole = null;
+    state.killed += 1;
+
+    if (state.killed >= TOTAL_RADISHES) {
+      endGame(true);
+    }
+  }
+
+  updateHud(performance.now());
+  render(performance.now());
+}
+
+function endGame(win) {
+  if (state.finished) return;
+  state.running = false;
+  state.finished = true;
+
+  if (win) {
+    if (state.levelIndex < LEVELS.length - 1) {
+      showOverlay(
+        '过关！',
+        `第 ${state.levelIndex + 1} 关完成。准备进入下一关。`,
+        '进入下一关',
+        () => startLevel(state.levelIndex + 1)
+      );
+    } else {
+      showOverlay(
+        '全部通关！',
+        '24 关全部完成，你是打萝卜大师！',
+        '重新开始',
+        () => startLevel(0)
+      );
+    }
+  } else {
+    showOverlay(
+      '时间到，失败',
+      `本关击杀 ${state.killed}/10。漏掉不判负，但时间结束前要全部击杀。`,
+      '重试本关',
+      () => startLevel(state.levelIndex)
+    );
+  }
+}
+
+function updateHud(now) {
+  const cfg = LEVELS[state.levelIndex];
+  levelText.textContent = `${state.levelIndex + 1}/${LEVELS.length}`;
+
+  const seconds = Math.max(0, Math.ceil(state.timeLeft / 1000));
+  timeText.textContent = seconds;
+  killText.textContent = `${state.killed}/${TOTAL_RADISHES}`;
+
+  const pct = cfg ? Math.max(0, Math.min(100, state.timeLeft / (cfg.time * 1000) * 100)) : 0;
+  timeFill.style.width = pct + '%';
+}
+
+function render(now) {
+  for (let h = 0; h < HOLE_COUNT; h++) {
+    const el = radishEls[h];
+    const r = state.radishes.find(x => x.status === 'active' && x.hole === h);
+
+    if (r) {
+      el.style.display = 'block';
+      el.dataset.id = String(r.id);
+
+      const hpPct = Math.max(0, Math.min(100, r.hp / r.maxHp * 100));
+      el.querySelector('.hp-fill').style.width = hpPct + '%';
+      el.querySelector('.hp-text').textContent = `${r.hp}/${r.maxHp}`;
+
+      const lifePct = Math.max(0, Math.min(100, (r.activeUntil - now) / LIFE_TIME * 100));
+      el.querySelector('.life-fill').style.width = lifePct + '%';
+    } else {
+      el.style.display = 'none';
+      el.dataset.id = '';
+    }
+  }
+}
+
+function showOverlay(title, text, btnText, handler) {
+  overlayTitle.textContent = title;
+  overlayText.textContent = text;
+  overlayBtn.textContent = btnText;
+  overlayBtn.onclick = handler;
+  overlay.classList.remove('hidden');
+}
+
+function hideOverlay() {
+  overlay.classList.add('hidden');
+}
+
+let lastFrame = performance.now();
+
+function loop(now) {
+  const dt = Math.min(1000, now - lastFrame);
+  lastFrame = now;
+
+  if (state.running && !state.finished) {
+    state.timeLeft -= dt;
+    state.elapsed += dt;
+
+    updateGame(now);
+
+    if (state.timeLeft <= 0) {
+      state.timeLeft = 0;
+      if (state.killed >= TOTAL_RADISHES) {
+        endGame(true);
+      } else {
+        endGame(false);
+      }
+    }
+  }
+
+  updateHud(now);
+  render(now);
+  requestAnimationFrame(loop);
+}
+
+showOverlay(
+  '打萝卜',
+  '每关固定 10 个萝卜。时间结束前全部击杀即过关。漏掉不判负，2 秒后残血重冒。',
+  '开始第 1 关',
+  () => startLevel(0)
+);
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
