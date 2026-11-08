@@ -20,6 +20,7 @@
     /* 禁用双击缩放（本仓库历史坑：快速连点触发页面放大吞掉点击，见 PR #17/#19） */
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
   }
   .game {
     width: min(960px, 100vw);
@@ -59,6 +60,8 @@
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: clamp(6px, 1.5vw, 16px);
+    /* 游戏操作区禁掉一切默认触摸行为（连点缩放/长按菜单）——时空小队同款修法 */
+    touch-action: none;
   }
   .hole {
     position: relative;
@@ -67,28 +70,40 @@
     background: radial-gradient(ellipse at center, #2d1a0f 0%, #4f301b 42%, #8b5a2b 70%, #654020 100%);
     box-shadow: inset 0 8px 12px rgba(0,0,0,.48), 0 4px 0 rgba(0,0,0,.16);
   }
-  .radish {
-    /* 默认缩在坑心里（土里）：以萝卜底部为原点缩小 + 下沉 + 透明 */
+  .hole-clip {
+    /* 裁剪窗：底边压在坑口内侧（约坑高 24% 处，坑椭圆在此已足够宽，萝卜沉下时
+       切口完全落在深色坑面里），顶边远高于坑（萝卜立起后完整可见、不穿帮）。
+       萝卜在窗内升降：升=从坑口探出，降=被坑口线吞回土里。 */
     position: absolute;
     left: 50%;
-    bottom: 27%;
-    transform: translateX(-50%) translateY(40%) scale(.15);
-    transform-origin: 50% 90%;
+    bottom: 24%;
+    width: 130%;
+    height: 260%;
+    transform: translateX(-50%);
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .radish {
+    /* 默认整个沉在裁剪窗底线之下（土里）：不可见、不可点 */
+    position: absolute;
+    left: 50%;
+    bottom: 1.2%;
+    transform: translateX(-50%) translateY(140%);
     opacity: 0;
     pointer-events: none;
-    width: 94%;
+    width: 88%;
     padding: 8px 2px 2px;
     cursor: pointer;
-    touch-action: manipulation;
-    /* 钻回土里的过渡（.up 移除时生效）：快进慢出缩回 */
-    transition: transform .18s ease-in, opacity .18s ease-in;
+    touch-action: none;
+    /* 钻回土里（.up 移除时生效）：加速下沉 */
+    transition: transform .16s ease-in, opacity .16s ease-in;
   }
   .radish.up {
-    /* 从坑里弹出长大：带回弹的曲线 */
-    transform: translateX(-50%) translateY(0) scale(1);
+    /* 从坑口冒出：略微回弹后站稳 */
+    transform: translateX(-50%) translateY(0);
     opacity: 1;
     pointer-events: auto;
-    transition: transform .24s cubic-bezier(.34,1.56,.64,1), opacity .14s ease-out;
+    transition: transform .24s cubic-bezier(.3,1.35,.45,1), opacity .1s ease-out;
   }
   .radish-body {
     font-size: clamp(30px, 7vw, 54px);
@@ -241,6 +256,9 @@ for (let i = 0; i < HOLE_COUNT; i++) {
   const hole = document.createElement('div');
   hole.className = 'hole';
 
+  const clip = document.createElement('div');
+  clip.className = 'hole-clip';
+
   const radish = document.createElement('div');
   radish.className = 'radish';
   radish.innerHTML = `
@@ -251,7 +269,8 @@ for (let i = 0; i < HOLE_COUNT; i++) {
   `;
   radish.addEventListener('pointerdown', onRadishPointerDown);
 
-  hole.appendChild(radish);
+  clip.appendChild(radish);
+  hole.appendChild(clip);
   fieldEl.appendChild(hole);
   holeEls.push(hole);
   radishEls.push(radish);
@@ -485,9 +504,22 @@ showOverlay(
   () => startLevel(0)
 );
 
-/* 兜底拦截双击缩放：320ms 内的第二次 touchend 阻止默认（Safari 双击放大，历史坑见 PR #17/#19） */
+/* 防连点缩放（时空小队同款双层方案）：
+   ① 场地区域（.field）有 touch-action:none，且连点的第二下在 touchstart 直接
+      preventDefault——touchstart 拦截是最早、兼容性最强的断缩放手段，
+      游戏走 pointerdown 不受影响；场区内无需 click/滚动，放心拦。
+   ② 场区外（弹窗按钮等）保留 320ms 兜底：第二次 touchend 阻止默认。
+      场区内不走这条——与时空小队同理由：该区域已由 touch-action:none 覆盖。 */
+let lastFieldTouch = 0;
+fieldEl.addEventListener('touchstart', function (e) {
+  const now = Date.now();
+  if (now - lastFieldTouch < 320) e.preventDefault();
+  lastFieldTouch = now;
+}, { passive: false });
+
 let lastTouchEnd = 0;
 document.addEventListener('touchend', function (e) {
+  if (e.target && fieldEl.contains(e.target)) return; // 场区内由 ① 负责
   const now = Date.now();
   if (now - lastTouchEnd < 320 && e.touches.length === 0) e.preventDefault();
   lastTouchEnd = now;
