@@ -751,6 +751,54 @@ function loadBanks(){
 }
 function saveBanks(list){ safeSet(BANKS_KEY, JSON.stringify(list)); }
 function bankLevels(words){ return Math.max(1, Math.ceil(words.length / WORDS_PER_LEVEL)); }
+
+/* ---------------- 旧版坏数据自愈 ----------------
+   旧版导入按空格切分，把「air hostess 空姐」切坏成 en=air / zh=hostess 空姐。
+   启动时扫描并修回：条件全部满足才动手——
+   1) zh 以一段英文(≥2 字母)开头、后面紧跟中文；
+   2) en 本身还是单个词（说明还没修过）；
+   3) 这段英文不是 en 的复读（led / LED 灯 是合法词条）；
+   4) 不是全大写缩写（APP 软件、USA 美国是合法词条）。 */
+let repairNote = '';
+function repairBanks(){
+  const banks = loadBanks();
+  const tail = "[\\u3000-\\u303f\\u4e00-\\u9fff\\uf900-\\ufaff\\uff00-\\uffef]";
+  const runRe = new RegExp("^([A-Za-z][A-Za-z'\\-]*(?:\\s[A-Za-z][A-Za-z'\\-]*)*)\\s+(?=" + tail + ")");
+  let fixed = 0, dirty = false;
+  const samples = [];
+  banks.forEach(b => {
+    b.words.forEach(w => {
+      if (!w || typeof w.en !== 'string' || typeof w.zh !== 'string') return;
+      if (/\s/.test(w.en)) return;                       // en 已是短语：不处理
+      const m = w.zh.match(runRe);
+      if (!m || m[1].length < 2) return;                 // zh 不是「英文开头 + 中文」结构
+      const run = m[1];
+      if (run.toLowerCase() === w.en.toLowerCase()) return;
+      if (run === run.toUpperCase() && /[A-Z]/.test(run)) return;
+      const firstTok = run.split(/\s+/)[0].toLowerCase();
+      w.en = (firstTok === w.en.toLowerCase() ? run : w.en + ' ' + run)
+        .toLowerCase().slice(0, 60);
+      w.zh = w.zh.slice(run.length)
+        .replace(/^[\s\u3000-\u303f\uff00-\uffef]+/, '')
+        .trim().slice(0, 60);
+      fixed++;
+      if (samples.length < 3) samples.push(`${w.en}（${w.zh}）`);
+    });
+    // 修完可能与库内已有词条撞英文：按英文去重（保留第一条）
+    const seen = new Set();
+    b.words = b.words.filter(w => {
+      const k = (w.en || '').toLowerCase();
+      if (seen.has(k)) { dirty = true; return false; }
+      seen.add(k);
+      return true;
+    });
+    if (fixed) dirty = true;
+  });
+  if (dirty){
+    saveBanks(banks);
+    if (fixed) repairNote = `已自动修复 ${fixed} 条旧版导入切坏的词条：${samples.join('、')}${fixed > samples.length ? ' 等' : ''}`;
+  }
+}
 function isCustomKey(key){ return typeof key === 'string' && key.indexOf(CUSTOM_PREFIX) === 0; }
 function getBankById(id){ return loadBanks().find(b => b.id === id) || null; }
 function sourceWordsOf(key){
@@ -1831,12 +1879,15 @@ function showDuelResult(winnerIdx, elapsed){
 function renderBanks(){
   const box = $('bankList');
   const banks = loadBanks();
+  const note = repairNote
+    ? `<p class="bank-hint" style="color:${CUSTOM_COLOR}">🔧 ${escapeHtml(repairNote)}</p>`
+    : '';
   if (!banks.length){
-    box.innerHTML = '<p class="bank-hint">还没有自定义词库。点右上角「＋ 新建」，把要背的词录进来——单人闯关和双人对决都能用。</p>';
+    box.innerHTML = note + '<p class="bank-hint">还没有自定义词库。点右上角「＋ 新建」，把要背的词录进来——单人闯关和双人对决都能用。</p>';
     return;
   }
   const prog = safeJSON('wg_progress', {});
-  box.innerHTML = banks.map(b => {
+  box.innerHTML = note + banks.map(b => {
     const total = bankLevels(b.words);
     const done = Math.min(prog[CUSTOM_PREFIX + b.id] || 0, total);
     const stat = done >= total
@@ -2233,6 +2284,7 @@ document.querySelectorAll('[data-back]').forEach(b => {
 /* ---------------- 启动 ---------------- */
 loadPlayers();
 renderCurrentPlayer();
+repairBanks();
 renderMenu();
 </script>
 </body>
