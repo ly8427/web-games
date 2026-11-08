@@ -271,6 +271,50 @@
   .speak-btn:hover{background:rgba(255,255,255,.14);}
   .speak-btn:active{transform:scale(.92);}
   .duel-speak{width:30px;height:30px;font-size:14px;flex-shrink:0;}
+
+  /* ---------- 订正卡（答错加深印象） ---------- */
+  .correct-overlay{position:fixed;inset:0;background:rgba(2,6,23,.74);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
+  .correct-overlay[hidden]{display:none;}
+  .correct-card{width:100%;max-width:430px;background:#171e2e;border:2px solid var(--accent,#60a5fa);
+    border-radius:18px;padding:20px 18px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.5);
+    animation:fade .25s ease;}
+  .cc-title{font-size:13px;color:#f87171;font-weight:700;margin-bottom:10px;}
+  .cc-word{font-size:25px;font-weight:800;color:#fff;letter-spacing:2px;line-height:1.6;
+    font-family:ui-monospace,monospace;word-break:break-word;margin-bottom:6px;}
+  .cc-letter{display:inline-block;animation:ccPop .32s ease both;}
+  .cc-gap{display:inline-block;width:14px;}
+  @keyframes ccPop{from{opacity:0;transform:scale(.3) translateY(8px)}to{opacity:1;transform:none}}
+  .cc-zh{font-size:15px;color:#94a3b8;margin-bottom:10px;}
+  .cc-input{width:100%;padding:12px 14px;font-size:16px;background:rgba(255,255,255,.06);
+    border:2px solid rgba(255,255,255,.12);border-radius:12px;color:#fff;outline:none;
+    font-family:inherit;text-align:center;letter-spacing:1px;transition:.15s;}
+  .cc-input:focus{border-color:var(--accent,#60a5fa);}
+  .cc-msg{min-height:18px;font-size:12px;margin-top:6px;}
+  .cc-msg.ok{color:#4ade80;}
+  .cc-msg.err{color:#f87171;}
+  .cc-actions{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px;align-items:center;}
+  .cc-continue{padding:12px;border:none;border-radius:12px;cursor:pointer;
+    background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;font-weight:700;
+    font-family:inherit;font-size:15px;}
+  .cc-skip{background:none;border:none;color:#64748b;font-size:12px;cursor:pointer;
+    font-family:inherit;padding:0 10px;}
+  .cc-skip:hover{color:#94a3b8;}
+  .duel-panel{position:relative;}
+  .dp-correct{position:absolute;inset:0;background:rgba(13,18,32,.96);border-radius:14px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    z-index:5;padding:10px;animation:fade .25s ease;}
+  .dp-correct[hidden]{display:none;}
+  .dp-correct-word{font-size:17px;font-weight:800;color:#fff;letter-spacing:1px;
+    font-family:ui-monospace,monospace;text-align:center;word-break:break-word;line-height:1.4;}
+  .dp-correct-zh{font-size:12px;color:#94a3b8;}
+  .dp-cc-go{padding:8px 18px;border:none;border-radius:10px;cursor:pointer;
+    background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;font-weight:700;
+    font-family:inherit;font-size:13px;}
+  /* 结算页错词回顾 */
+  .wrong-review{margin-top:4px;}
+  .wr-title{font-size:12px;color:#94a3b8;margin:12px 0 8px;}
+  .wr-speak{flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -455,6 +499,22 @@
   <div class="feedback" id="feedback"></div>
 
   <button class="submit-btn" id="submitBtn">提 交</button>
+
+  <div class="correct-overlay" id="correctOverlay" hidden>
+    <div class="correct-card">
+      <div class="cc-title">✗ 答错了，把这个词记住</div>
+      <div class="cc-word" id="ccWord"></div>
+      <div class="cc-zh" id="ccZh"></div>
+      <div style="margin-bottom:10px"><button class="speak-btn" id="ccSpeak" title="再听一遍">🔊</button></div>
+      <input id="ccInput" class="cc-input" type="text" autocomplete="off" autocorrect="off"
+             autocapitalize="off" spellcheck="false" placeholder="照着抄一遍，抄对继续">
+      <div class="cc-msg" id="ccMsg"></div>
+      <div class="cc-actions">
+        <button class="cc-continue" id="ccGo">抄好了，继续</button>
+        <button class="cc-skip" id="ccSkip">跳过</button>
+      </div>
+    </div>
+  </div>
 </section>
 
 <!-- ========== 双人游戏 ========== -->
@@ -478,6 +538,12 @@
     <div class="dp-hint" id="dp1hint"></div>
     <input id="duelInput1" type="text" autocomplete="off" spellcheck="false" placeholder="玩家1 输入…">
     <div class="dp-fb" id="dp1fb"></div>
+    <div class="dp-correct" id="dp1correct" hidden>
+      <div class="dp-correct-word" id="dp1ccWord"></div>
+      <div class="dp-correct-zh" id="dp1ccZh"></div>
+      <button class="speak-btn duel-speak" id="dp1ccSpeak" title="再听一遍">🔊</button>
+      <button class="dp-cc-go" id="dp1ccGo">记住了，继续 →</button>
+    </div>
   </div>
 
   <div class="duel-panel" id="dpanel2">
@@ -490,6 +556,12 @@
     <div class="dp-hint" id="dp2hint"></div>
     <input id="duelInput2" type="text" autocomplete="off" spellcheck="false" placeholder="玩家2 输入…">
     <div class="dp-fb" id="dp2fb"></div>
+    <div class="dp-correct" id="dp2correct" hidden>
+      <div class="dp-correct-word" id="dp2ccWord"></div>
+      <div class="dp-correct-zh" id="dp2ccZh"></div>
+      <button class="speak-btn duel-speak" id="dp2ccSpeak" title="再听一遍">🔊</button>
+      <button class="dp-cc-go" id="dp2ccGo">记住了，继续 →</button>
+    </div>
   </div>
 </section>
 
@@ -498,6 +570,7 @@
   <div class="result-icon" id="resultIcon">🎉</div>
   <h2 class="result-title" id="resultTitle"></h2>
   <div class="result-stats" id="resultStats"></div>
+  <div class="wrong-review" id="resultWrong"></div>
   <p class="result-text" id="resultText"></p>
   <button class="next-btn" id="nextBtn">下一关 →</button>
 </section>
@@ -829,6 +902,7 @@ const state = {
   current: null,
   mastered: 0,
   mistakes: 0,
+  wrongList: [],
   locked: false,
   speed: BASE_SPEED,
   targetSpeed: BASE_SPEED,
@@ -1385,7 +1459,9 @@ function startLevel(){
   state.current  = null;
   state.mastered = 0;
   state.mistakes = 0;
+  state.wrongList = [];
   state.locked   = false;
+  $('correctOverlay').hidden = true;   // 上局开着订正卡就退出的情况：新关卡先收起
   state.speed       = BASE_SPEED;
   state.targetSpeed = BASE_SPEED;
   state.bestSpeed   = BASE_SPEED;
@@ -1477,13 +1553,12 @@ function submitAnswer(){
     fb.innerHTML = `✗ 正确答案：<b>${state.current.en}</b>${hintMode === 'audio' ? '（' + state.current.zh + '）' : ''}<br>减速了… 这个词稍后会再考`;
 
     state.queue.push(state.current);
+    if (!state.wrongList.some(x => x.en === state.current.en)) {
+      state.wrongList.push({ en: state.current.en, zh: state.current.zh });
+    }
     shakeInput('answerInput');
 
-    setTimeout(() => {
-      fb.textContent = '';
-      fb.className   = 'feedback';
-      nextWord();
-    }, 1650);
+    showCorrectCard(state.current.en, state.current.zh);
   }
 }
 
@@ -1492,6 +1567,71 @@ function shakeInput(id){
   input.classList.remove('shake');
   void input.offsetWidth;
   input.classList.add('shake');
+}
+
+/* ---------------- 订正卡（答错加深印象：看 + 听 + 抄） ---------------- */
+function cascadeLetters(en){
+  return en.split('').map((c, i) =>
+    c === ' '
+      ? '<span class="cc-gap"></span>'
+      : `<span class="cc-letter" style="animation-delay:${Math.min(i * 60, 1200)}ms">${escapeHtml(c)}</span>`
+  ).join('');
+}
+
+function showCorrectCard(en, zh){
+  $('ccWord').innerHTML = cascadeLetters(en);
+  $('ccZh').textContent = zh;
+  const input = $('ccInput');
+  input.value = '';
+  input.disabled = false;
+  $('ccMsg').textContent = '';
+  $('ccMsg').className = 'cc-msg';
+  $('correctOverlay').hidden = false;
+  speakWord(en);
+  setTimeout(() => input.focus(), 80);
+}
+
+function closeCorrectCard(){
+  $('correctOverlay').hidden = true;
+  $('ccInput').value = '';
+  const fb = $('feedback');
+  fb.textContent = '';
+  fb.className = 'feedback';
+}
+
+/* 抄写判定：与 normAnswer 同一套宽容规则；抄对自动继续 */
+function correctCardCheck(){
+  const en = state.current ? state.current.en : '';
+  const v = normAnswer($('ccInput').value);
+  if (!v) return false;
+  if (v === normAnswer(en)){
+    $('ccMsg').textContent = '✓ 记住了！';
+    $('ccMsg').className = 'cc-msg ok';
+    $('ccInput').disabled = true;
+    setTimeout(() => {
+      closeCorrectCard();
+      nextWord();
+    }, 480);
+    return true;
+  }
+  $('ccMsg').textContent = '再照着上面的词抄一遍哦';
+  $('ccMsg').className = 'cc-msg err';
+  shakeInput('ccInput');
+  return false;
+}
+
+/* 双人：答错者自己面板里的迷你订正卡（不挡对方） */
+function showDuelCorrect(idx){
+  const p = duel.players[idx];
+  if (!p || !p.current) return;
+  $('dp' + (idx + 1) + 'ccWord').innerHTML = cascadeLetters(p.current.en);
+  $('dp' + (idx + 1) + 'ccZh').textContent = p.current.zh;
+  $('dp' + (idx + 1) + 'correct').hidden = false;
+  speakWord(p.current.en);
+}
+
+function closeDuelCorrect(idx){
+  $('dp' + (idx + 1) + 'correct').hidden = true;
 }
 
 function updateHeader(){
@@ -1571,6 +1711,23 @@ function showSingleResult(cleared){
       <span class="rs-value">${Math.round(state.bestSpeed)}</span></div>
     <div class="rs-item"><span class="rs-label">答错次数</span>
       <span class="rs-value">${state.mistakes}</span></div>`;
+
+  // 本关答错的词：再听再看一遍（加深印象）
+  const wr = $('resultWrong');
+  if (state.wrongList.length){
+    wr.innerHTML = '<div class="wr-title">📖 本关答错的词——点 🔊 再听一遍</div>' +
+      state.wrongList.map((w, i) =>
+        `<div class="word-row">
+          <span class="word-en">${escapeHtml(w.en)}</span>
+          <span class="word-zh">${escapeHtml(w.zh)}</span>
+          <button class="mini-btn wr-speak" data-wrsay="${i}" title="读一遍">🔊</button>
+        </div>`).join('');
+    wr.querySelectorAll('[data-wrsay]').forEach(btn => {
+      btn.addEventListener('click', () => speakWord(state.wrongList[+btn.dataset.wrsay].en));
+    });
+  } else {
+    wr.innerHTML = '';
+  }
 
   if (cleared){
     $('resultIcon').textContent  = '🏆';
@@ -1685,7 +1842,7 @@ function startDuel(diff, n1, n2){
   });
 
   // 面板配色
-  duel.players.forEach(p => {
+  duel.players.forEach((p, i) => {
     p.nameEl.textContent = p.name;
     p.nameEl.style.color = p.color;
     p.panel.style.setProperty('--pc', p.color);
@@ -1693,6 +1850,7 @@ function startDuel(diff, n1, n2){
     p.fbEl.textContent = '';
     p.fbEl.className = 'dp-fb';
     p.distEl.textContent = `0 / ${DUEL_GOAL} m`;
+    $('dp' + (i + 1) + 'correct').hidden = true;   // 收起上局残留的迷你订正卡
   });
 
   const dInfo = sourceInfoOf(diff);
@@ -1798,12 +1956,7 @@ function submitDuel(idx){
     scene.flash = 1;
     shakeInput(p.input.id);
 
-    setTimeout(() => {
-      if (duel.over || duel.players[idx] !== p) return;
-      p.fbEl.textContent = '';
-      p.fbEl.className = 'dp-fb';
-      nextDuelWord(idx);
-    }, 1500);
+    showDuelCorrect(idx);
   }
 }
 
@@ -2241,6 +2394,49 @@ $('dp1speak').addEventListener('click', () => {
 $('dp2speak').addEventListener('click', () => {
   const p = duel.players[1];
   if (p && p.current) speakWord(p.current.en);
+});
+
+// 订正卡（单人）：抄对自动继续；Enter 也校验；可跳过
+// 输入过程中只在完整匹配时自动过，不逐键报错
+$('ccInput').addEventListener('input', () => {
+  const en = state.current ? state.current.en : '';
+  const v = normAnswer($('ccInput').value);
+  if (v && v === normAnswer(en)) correctCardCheck();
+});
+$('ccInput').addEventListener('keydown', e => {
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === 'Enter'){ e.preventDefault(); correctCardCheck(); }
+});
+$('ccGo').addEventListener('click', () => {
+  if (!$('ccInput').value.trim()){
+    $('ccMsg').textContent = '照着抄一遍，或者点「跳过」';
+    $('ccMsg').className = 'cc-msg err';
+    return;
+  }
+  correctCardCheck();
+});
+$('ccSkip').addEventListener('click', () => {
+  closeCorrectCard();
+  nextWord();
+});
+$('ccSpeak').addEventListener('click', () => {
+  if (state.current) speakWord(state.current.en);
+});
+
+// 订正卡（双人）：答错者看完/听完自己点继续，不挡对方
+[0, 1].forEach(i => {
+  $('dp' + (i + 1) + 'ccGo').addEventListener('click', () => {
+    closeDuelCorrect(i);
+    const p = duel.players[i];
+    if (duel.over || !p) return;
+    p.fbEl.textContent = '';
+    p.fbEl.className = 'dp-fb';
+    nextDuelWord(i);
+  });
+  $('dp' + (i + 1) + 'ccSpeak').addEventListener('click', () => {
+    const p = duel.players[i];
+    if (p && p.current) speakWord(p.current.en);
+  });
 });
 
 // 双人输入框聚焦高亮
