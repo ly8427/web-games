@@ -17,14 +17,17 @@
     user-select: none;
     -webkit-user-select: none;
     overflow-x: hidden;
-    /* 禁用双击缩放（本仓库历史坑：快速连点触发页面放大吞掉点击，见 PR #17/#19） */
-    touch-action: manipulation;
+    /* 触摸手势防线（本仓库历史坑见 PR #17/#19，思路对齐时空小队）：
+       pan-y = 全页只允许竖向滚动，双击缩放与双指捏合都无门；
+       游戏容器与弹窗再上 none（最强档），连竖向滚动也不留 */
+    touch-action: pan-y;
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
   }
   .game {
     width: min(960px, 100vw);
     padding: 16px;
+    touch-action: none; /* 游戏容器：一切浏览器触摸手势（缩放/捏合/滚动）全禁 */
   }
   header {
     display: flex;
@@ -156,6 +159,7 @@
     justify-content: center;
     padding: 20px;
     z-index: 10;
+    touch-action: none; /* 弹窗全屏覆盖：缩放/捏合/滚动全禁，按钮点击不受影响 */
   }
   .overlay.hidden { display: none; }
   .panel {
@@ -504,26 +508,32 @@ showOverlay(
   () => startLevel(0)
 );
 
-/* 防连点缩放（时空小队同款双层方案）：
-   ① 场地区域（.field）有 touch-action:none，且连点的第二下在 touchstart 直接
-      preventDefault——touchstart 拦截是最早、兼容性最强的断缩放手段，
-      游戏走 pointerdown 不受影响；场区内无需 click/滚动，放心拦。
-   ② 场区外（弹窗按钮等）保留 320ms 兜底：第二次 touchend 阻止默认。
-      场区内不走这条——与时空小队同理由：该区域已由 touch-action:none 覆盖。 */
+/* 防连点/捏合缩放（时空小队同思路的完整版）：
+   ① CSS 层：body=pan-y（全页禁双击缩放与捏合，仅留竖向滚动），
+      .game/.overlay/.field=none（连滚动也无）——正常情况下缩放已无门；
+   ② JS 层兜底（老 iOS 不认 touch-action、个别套壳浏览器阈值不同）：
+      - 场区内连点的第二下在 touchstart 直接 preventDefault（最早、最强）；
+        游戏走 pointerdown 不受影响；场区内无需 click/滚动，放心拦；
+      - 场区外保留 touchend 350ms 兜底（对齐浏览器双击判定窗上限）；
+      - iOS Safari 专属 gesturestart/gesturechange 一律拦（捏合的
+        老通道；桌面 Chromium 不产生该事件，无副作用）。 */
 let lastFieldTouch = 0;
 fieldEl.addEventListener('touchstart', function (e) {
   const now = Date.now();
-  if (now - lastFieldTouch < 320) e.preventDefault();
+  if (now - lastFieldTouch < 350) e.preventDefault();
   lastFieldTouch = now;
 }, { passive: false });
 
 let lastTouchEnd = 0;
 document.addEventListener('touchend', function (e) {
-  if (e.target && fieldEl.contains(e.target)) return; // 场区内由 ① 负责
+  if (e.target && fieldEl.contains(e.target)) return; // 场区内由上一条负责
   const now = Date.now();
-  if (now - lastTouchEnd < 320 && e.touches.length === 0) e.preventDefault();
+  if (now - lastTouchEnd < 350 && e.touches.length === 0) e.preventDefault();
   lastTouchEnd = now;
 }, { passive: false });
+
+document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+document.addEventListener('gesturechange', function (e) { e.preventDefault(); }, { passive: false });
 
 requestAnimationFrame(loop);
 </script>
