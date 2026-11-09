@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>打萝卜</title>
 <style>
   * { box-sizing: border-box; }
@@ -511,17 +511,21 @@ showOverlay(
 /* 防连点/捏合缩放（时空小队同思路的完整版）：
    ① CSS 层：body=pan-y（全页禁双击缩放与捏合，仅留竖向滚动），
       .game/.overlay/.field=none（连滚动也无）——正常情况下缩放已无门；
-   ② JS 层兜底（老 iOS 不认 touch-action、个别套壳浏览器阈值不同）：
-      - 场区内连点的第二下在 touchstart 直接 preventDefault（最早、最强）；
-        游戏走 pointerdown 不受影响；场区内无需 click/滚动，放心拦；
+   ② JS 层兜底（老 iOS 不认 touch-action、viewport 禁令 iOS 10 起被无视）：
+      - 场区内 touchstart 一律 preventDefault（不判时间窗，见下方注释）；
       - 场区外保留 touchend 350ms 兜底（对齐浏览器双击判定窗上限）；
       - iOS Safari 专属 gesturestart/gesturechange 一律拦（捏合的
-        老通道；桌面 Chromium 不产生该事件，无副作用）。 */
-let lastFieldTouch = 0;
+        老通道；桌面 Chromium 不产生该事件，无副作用）；
+      - viewport 里 maximum-scale=1：iOS Safari 对"禁止捏合"视而不见
+        （无障碍要求），但双击放大仍受它约束，是传统保底招。 */
+/* 游戏场区：一切触摸默认行为一律拦（不判时间窗）。
+   Safari 判双击的计时起点（约等于"上次抬手"）与 JS 能测的间隔（上次落地）
+   天然有岔开区间——连点稍带停顿就漏网（iPhone 实测"偶尔放大"的根因）。
+   全拦后场区内不存在"完整点按"，双击判定无从触发；
+   游戏点击走 pointerdown（先于 touchstart 触发），实测不受影响；
+   场区内无链接无滚动无输入，全拦零副作用。 */
 fieldEl.addEventListener('touchstart', function (e) {
-  const now = Date.now();
-  if (now - lastFieldTouch < 350) e.preventDefault();
-  lastFieldTouch = now;
+  e.preventDefault();
 }, { passive: false });
 
 let lastTouchEnd = 0;
